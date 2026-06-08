@@ -1,8 +1,8 @@
 # video2live
 
 Turn a slice of a video into an Apple **Live Photo** on macOS. Pick the segment by
-dragging a fixed-length window over the timeline; export a single `.pvt` package that you
-just drag into **Photos** — no special permissions required.
+dragging a window over the timeline; export a single `.pvt` package that you drag into
+**Photos** — or **AirDrop straight to your iPhone**. No special permissions required.
 
 *中文说明见下方 ↓*
 
@@ -22,8 +22,8 @@ just drag into **Photos** — no special permissions required.
 - Scrub a **draggable window** over a thumbnail timeline to choose the clip.
 - Live Photo length is **adjustable from 1 to 10 seconds** (default 3s; key photo = middle frame).
 - Exports a `.pvt` package — a bundle that shows up as **a single file** in Finder.
-- Double-click the `.pvt` (or drag it into **Photos**) and it imports as one Live Photo.
-  **No Photos-library permission needed.**
+- Drag the `.pvt` into **Photos**, **or AirDrop it to your iPhone** — either way it becomes
+  one Live Photo. **No Photos-library permission needed.**
 
 ### Why `.pvt`?
 A Live Photo is fundamentally a **pair**: a still (HEIC) + a video (MOV) linked by a shared
@@ -52,7 +52,8 @@ Or for development: `swift build -c release`.
    on the timeline to pick the clip (use **Preview selection** to check).
 3. Choose an export folder (defaults to `~/Pictures/video2live`).
 4. Click **Create & reveal in Finder**.
-5. In Finder, **double-click the `.pvt`** (or drag it into Photos) → it becomes a Live Photo.
+5. In Finder, **drag the `.pvt` into Photos**, or **AirDrop it to your iPhone** → it becomes
+   a Live Photo.
 
 ### Language
 The UI is **bilingual**: it shows English or Chinese automatically based on your macOS
@@ -102,7 +103,7 @@ the recipient may need to **right-click → Open** the first time, or allow it u
 - 在缩略图时间轴上拖动一个**窗口**来选取片段。
 - Live Photo 时长**可在 1–10 秒之间调节**(默认 3 秒;封面取片段中点那一帧)。
 - 导出一个 `.pvt` 包 —— 在 Finder 里显示为**单个文件**。
-- 双击 `.pvt`(或把它拖进**「照片」**)即可作为一张 Live Photo 导入,**无需任何权限**。
+- 把 `.pvt` 拖进**「照片」**,或**直接 AirDrop 到 iPhone** —— 都会得到一张 Live Photo,**无需任何权限**。
 
 ### 为什么用 `.pvt`?
 Live Photo 本质上是**一对文件**:静帧(HEIC)+ 视频(MOV),靠相同的「内容标识符」配对。
@@ -129,7 +130,7 @@ open video2live.app
 2. 用 **时长** 滑块设定片段长度(1–10 秒),再拖动时间轴上的**黄色窗口**选取片段(可点 **预览选中片段** 查看)。
 3. 选择导出文件夹(默认 `~/Pictures/video2live`)。
 4. 点 **生成并在访达中显示**。
-5. 在访达里**双击 `.pvt`**(或拖进「照片」)→ 即成为一张 Live Photo。
+5. 在访达里把 **`.pvt` 拖进「照片」**,或**直接 AirDrop 到 iPhone** → 即成为一张 Live Photo。
 
 ### 语言
 界面**中英双语**,会根据 macOS 系统语言自动显示中文或英文。

@@ -100,8 +100,8 @@ struct ContentView: View {
 
             Divider()
 
-            Text(L.t("Creates a .pvt package (shown as a single file in Finder): double-click it or drag it into Photos on your Mac to get a Live Photo — no permission needed.",
-                     "生成一个 .pvt 包（Finder 里显示为单个文件）：双击或拖进 Mac「照片」即合成 Live Photo，无需任何权限。"))
+            Text(L.t("Creates a .pvt package (a single file in Finder). Drag it into Mac Photos, or AirDrop it to an iPhone — either way it becomes one Live Photo. No permission needed.",
+                     "生成一个 .pvt 包（Finder 里是单个文件）：拖进 Mac「照片」，或直接 AirDrop 到 iPhone——都会合成一张 Live Photo，无需任何权限。"))
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -246,8 +246,8 @@ struct ContentView: View {
                                    "失败：\(err.localizedDescription)")
             case .success(let out):
                 NSWorkspace.shared.activateFileViewerSelecting(out.revealURLs)
-                model.status = L.t("✅ Exported a .pvt package to \(dir.path). It's selected in Finder — double-click it or drag it into Photos to get a Live Photo (no permission needed).",
-                                   "✅ 已导出 .pvt 包到 \(dir.path)。访达里已选中它——双击或拖进「照片」即合成 Live Photo（无需权限）。")
+                model.status = L.t("✅ Exported a .pvt package to \(dir.path). It's selected in Finder — drag it into Photos, or AirDrop it to your iPhone, to get a Live Photo.",
+                                   "✅ 已导出 .pvt 包到 \(dir.path)。访达里已选中它——拖进「照片」，或直接 AirDrop 到 iPhone，即可得到 Live Photo。")
             }
         }
     }
