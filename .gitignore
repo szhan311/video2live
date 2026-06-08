@@ -1,0 +1,14 @@
+# Swift / SwiftPM
+.build/
+.swiftpm/
+Package.resolved
+
+# Build artifacts
+*.app/
+*.dmg
+
+# macOS
+.DS_Store
+
+# Editor / local
+.claude/
