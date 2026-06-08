@@ -14,11 +14,23 @@ final class VideoModel: ObservableObject {
     @Published var isBusy: Bool = false
     @Published var coverPreview: NSImage?             // still frame that becomes the key photo
 
+    /// User-chosen Live Photo length (seconds), persisted. Clamped to 1…10.
+    @Published var targetDuration: Double = VideoModel.loadDuration() {
+        didSet { UserDefaults.standard.set(targetDuration, forKey: Self.durationKey) }
+    }
+    static let minDuration: Double = 1
+    static let maxDuration: Double = 10
+    private static let durationKey = "liveconverter.duration"
+    static func loadDuration() -> Double {
+        let v = UserDefaults.standard.object(forKey: durationKey) as? Double ?? kLivePhotoDuration
+        return Swift.min(Swift.max(v, minDuration), maxDuration)
+    }
+
     let player = AVPlayer()
 
     /// Length of the segment we extract. Clamped to the video length for short clips.
     var windowDuration: Double {
-        min(kLivePhotoDuration, max(0, totalDuration))
+        min(targetDuration, max(0, totalDuration))
     }
 
     /// Largest valid value for `selectionStart`.
@@ -74,6 +86,13 @@ final class VideoModel: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Change the Live Photo length; keep the selection window inside the video.
+    func setTargetDuration(_ value: Double) {
+        targetDuration = min(max(value, Self.minDuration), Self.maxDuration)
+        selectionStart = min(selectionStart, maxStart)
+        seekToCover()
     }
 
     /// Clamp and store a new window start (called by the timeline while dragging).

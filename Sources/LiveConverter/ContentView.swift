@@ -68,6 +68,21 @@ struct ContentView: View {
                 }
             }
 
+            // Live Photo length
+            HStack(spacing: 10) {
+                Text(L.t("Length", "时长")).font(.callout)
+                Slider(
+                    value: Binding(get: { model.targetDuration },
+                                   set: { model.setTargetDuration($0) }),
+                    in: VideoModel.minDuration...VideoModel.maxDuration,
+                    step: 0.5,
+                    onEditingChanged: { editing in if !editing { model.refreshCover() } }
+                )
+                Text(String(format: "%.1f s", model.targetDuration))
+                    .font(.callout).monospacedDigit()
+                    .frame(width: 46, alignment: .trailing)
+            }
+
             // Timeline + selection
             VStack(spacing: 6) {
                 TimelineView(model: model)
@@ -133,8 +148,7 @@ struct ContentView: View {
                 Label(L.t("Open Video…", "打开视频…"), systemImage: "folder")
             }
             Spacer()
-            Text(L.t(String(format: "Fixed length: %.1f s", kLivePhotoDuration),
-                     String(format: "固定时长：%.1f 秒", kLivePhotoDuration)))
+            Text("video2live")
                 .font(.callout).foregroundStyle(.secondary)
         }
     }

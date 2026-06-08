@@ -19,8 +19,8 @@ just drag into **Photos** — no special permissions required.
 
 ### What it does
 - Open (or drag-and-drop) any video.
-- Scrub a **draggable, fixed-length window** over a thumbnail timeline to choose the clip.
-- Live Photo length is **fixed at 3 seconds** (the key photo is the middle frame).
+- Scrub a **draggable window** over a thumbnail timeline to choose the clip.
+- Live Photo length is **adjustable from 1 to 10 seconds** (default 3s; key photo = middle frame).
 - Exports a `.pvt` package — a bundle that shows up as **a single file** in Finder.
 - Double-click the `.pvt` (or drag it into **Photos**) and it imports as one Live Photo.
   **No Photos-library permission needed.**
@@ -48,8 +48,8 @@ Or for development: `swift build -c release`.
 
 ### How to use
 1. Click **Open Video…** or drag a video onto the window.
-2. Drag the **yellow window** on the timeline to pick the 3-second clip (use **Preview
-   selection** to check).
+2. Set the clip length with the **Length** slider (1–10 s), then drag the **yellow window**
+   on the timeline to pick the clip (use **Preview selection** to check).
 3. Choose an export folder (defaults to `~/Pictures/video2live`).
 4. Click **Create & reveal in Finder**.
 5. In Finder, **double-click the `.pvt`** (or drag it into Photos) → it becomes a Live Photo.
@@ -58,13 +58,13 @@ Or for development: `swift build -c release`.
 The UI is **bilingual**: it shows English or Chinese automatically based on your macOS
 system language.
 
-### Customizing the duration
-Edit the single constant at the top of
+### Duration
+The length is **adjustable in-app** with the **Length** slider (1–10 s) and is remembered
+between launches. The default (first run) is the constant at the top of
 [`Sources/LiveConverter/LiveConverterApp.swift`](Sources/LiveConverter/LiveConverterApp.swift):
 ```swift
-let kLivePhotoDuration: Double = 3.0   // seconds
+let kLivePhotoDuration: Double = 3.0   // first-run default, in seconds
 ```
-Then rebuild.
 
 ### How it works
 - **Still (HEIC):** the Apple maker note key `"17"` is set to an asset-identifier UUID.
@@ -99,8 +99,8 @@ the recipient may need to **right-click → Open** the first time, or allow it u
 
 ### 功能
 - 打开(或拖拽)任意视频。
-- 在缩略图时间轴上拖动一个**固定长度的窗口**来选取片段。
-- Live Photo 时长**固定为 3 秒**(封面取片段中点那一帧)。
+- 在缩略图时间轴上拖动一个**窗口**来选取片段。
+- Live Photo 时长**可在 1–10 秒之间调节**(默认 3 秒;封面取片段中点那一帧)。
 - 导出一个 `.pvt` 包 —— 在 Finder 里显示为**单个文件**。
 - 双击 `.pvt`(或把它拖进**「照片」**)即可作为一张 Live Photo 导入,**无需任何权限**。
 
@@ -126,7 +126,7 @@ open video2live.app
 
 ### 使用步骤
 1. 点 **打开视频…** 或把视频拖进窗口。
-2. 拖动时间轴上的**黄色窗口**选取 3 秒片段(可点 **预览选中片段** 查看)。
+2. 用 **时长** 滑块设定片段长度(1–10 秒),再拖动时间轴上的**黄色窗口**选取片段(可点 **预览选中片段** 查看)。
 3. 选择导出文件夹(默认 `~/Pictures/video2live`)。
 4. 点 **生成并在访达中显示**。
 5. 在访达里**双击 `.pvt`**(或拖进「照片」)→ 即成为一张 Live Photo。
@@ -134,13 +134,13 @@ open video2live.app
 ### 语言
 界面**中英双语**,会根据 macOS 系统语言自动显示中文或英文。
 
-### 自定义时长
-修改 [`Sources/LiveConverter/LiveConverterApp.swift`](Sources/LiveConverter/LiveConverterApp.swift)
-顶部那一行常量:
+### 时长
+时长可在**应用内**用 **时长** 滑块调节(1–10 秒),并会记住上次的设置。首次运行的默认值由
+[`Sources/LiveConverter/LiveConverterApp.swift`](Sources/LiveConverter/LiveConverterApp.swift)
+顶部这行常量决定:
 ```swift
-let kLivePhotoDuration: Double = 3.0   // 秒
+let kLivePhotoDuration: Double = 3.0   // 首次运行默认值，单位秒
 ```
-然后重新构建。
 
 ### 工作原理
 - **静帧(HEIC):** 在 Apple Maker Note 的 `"17"` 键里写入资产标识符(UUID)。

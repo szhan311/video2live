@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Fixed Live Photo duration, in seconds. Apple's own Live Photos are ~3s.
-/// Change this single value if you want a different fixed length.
+/// Default Live Photo duration, in seconds (Apple's own Live Photos are ~3s).
+/// In-app this is adjustable from 1–10s; this constant is just the first-run default.
 let kLivePhotoDuration: Double = 3.0
 
 @main
