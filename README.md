@@ -6,7 +6,12 @@ just drag into **Photos** — no special permissions required.
 
 *中文说明见下方 ↓*
 
+[![Download](https://img.shields.io/badge/⬇%20Download%20%2F%20下载-video2live.dmg-brightgreen?style=for-the-badge)](https://github.com/szhan311/video2live/releases/latest/download/video2live.dmg)
+&nbsp;
+[![Release](https://img.shields.io/github/v/release/szhan311/video2live)](https://github.com/szhan311/video2live/releases/latest)
 ![platform](https://img.shields.io/badge/platform-macOS%2013%2B-blue)
+
+> **[⬇ Download the latest DMG / 下载最新版 DMG](https://github.com/szhan311/video2live/releases/latest/download/video2live.dmg)** — open it and drag **video2live.app** into Applications. 打开后把 **video2live.app** 拖进「应用程序」即可。
 
 ---
 
