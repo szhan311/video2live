@@ -48,6 +48,103 @@ enum LivePhotoGenerator {
     private static let int8Type    = "com.apple.metadata.datatype.int8"
     private static let utf8Type    = "com.apple.metadata.datatype.UTF-8"
 
+    // MARK: - Source metadata (date / location / camera) carried into the Live Photo
+
+    struct SourceMeta {
+        var creationDate: Date?
+        var isoLocation: String?   // ISO 6709, e.g. "+37.7749-122.4194/"
+        var make: String?
+        var model: String?
+        var software: String?
+    }
+
+    private static func extractMeta(from asset: AVAsset) -> SourceMeta {
+        var m = SourceMeta()
+        let all = asset.metadata
+
+        func firstString(_ ids: [AVMetadataIdentifier]) -> String? {
+            for id in ids {
+                if let s = AVMetadataItem.metadataItems(from: all, filteredByIdentifier: id)
+                    .first?.stringValue, !s.isEmpty { return s }
+            }
+            return nil
+        }
+        func firstDate(_ ids: [AVMetadataIdentifier]) -> Date? {
+            for id in ids {
+                for item in AVMetadataItem.metadataItems(from: all, filteredByIdentifier: id) {
+                    if let d = item.dateValue { return d }
+                    if let s = item.stringValue {
+                        if let d = iso8601In.date(from: s) { return d }
+                        if let d = iso8601InFrac.date(from: s) { return d }
+                    }
+                }
+            }
+            return nil
+        }
+
+        m.creationDate = firstDate([.quickTimeMetadataCreationDate, .commonIdentifierCreationDate])
+            ?? asset.creationDate?.dateValue
+        m.isoLocation = firstString([.quickTimeMetadataLocationISO6709, .commonIdentifierLocation])
+        m.make = firstString([.quickTimeMetadataMake, .commonIdentifierMake])
+        m.model = firstString([.quickTimeMetadataModel, .commonIdentifierModel])
+        m.software = firstString([.quickTimeMetadataSoftware, .commonIdentifierSoftware])
+        return m
+    }
+
+    private static func qtItem(_ id: AVMetadataIdentifier, _ value: String) -> AVMetadataItem {
+        let it = AVMutableMetadataItem()
+        it.identifier = id
+        it.dataType = utf8Type
+        it.value = value as NSString
+        return it
+    }
+
+    /// Parse an ISO 6709 string into a CGImage GPS dictionary.
+    private static func gpsDictionary(fromISO6709 s: String) -> [CFString: Any]? {
+        let cleaned = s.replacingOccurrences(of: "/", with: "")
+        var nums: [Double] = []
+        var cur = ""
+        for (i, ch) in cleaned.enumerated() {
+            if (ch == "+" || ch == "-") && i != 0 {
+                if let v = Double(cur) { nums.append(v) }
+                cur = String(ch)
+            } else {
+                cur.append(ch)
+            }
+        }
+        if let v = Double(cur) { nums.append(v) }
+        guard nums.count >= 2 else { return nil }
+        let lat = nums[0], lon = nums[1]
+        var gps: [CFString: Any] = [
+            kCGImagePropertyGPSLatitude: abs(lat),
+            kCGImagePropertyGPSLatitudeRef: lat >= 0 ? "N" : "S",
+            kCGImagePropertyGPSLongitude: abs(lon),
+            kCGImagePropertyGPSLongitudeRef: lon >= 0 ? "E" : "W"
+        ]
+        if nums.count >= 3 {
+            gps[kCGImagePropertyGPSAltitude] = abs(nums[2])
+            gps[kCGImagePropertyGPSAltitudeRef] = nums[2] >= 0 ? 0 : 1
+        }
+        return gps
+    }
+
+    private static let exifDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy:MM:dd HH:mm:ss"
+        return f
+    }()
+    private static let iso8601In: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; return f
+    }()
+    private static let iso8601InFrac: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f
+    }()
+    private static let iso8601Out: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; return f
+    }()
+
     /// Generate the pair. Runs on a background queue; calls completion on the main queue.
     static func generate(asset: AVURLAsset,
                          startSeconds: Double,
@@ -68,12 +165,14 @@ enum LivePhotoGenerator {
                 try? FileManager.default.removeItem(at: photoURL)
                 try? FileManager.default.removeItem(at: videoURL)
 
-                try writeStill(asset: asset, seconds: coverSeconds, assetID: assetID, to: photoURL)
+                let meta = extractMeta(from: asset)
+                try writeStill(asset: asset, seconds: coverSeconds, assetID: assetID, meta: meta, to: photoURL)
                 try writeVideo(asset: asset,
                                startSeconds: startSeconds,
                                durationSeconds: durationSeconds,
                                coverSeconds: coverSeconds,
                                assetID: assetID,
+                               meta: meta,
                                to: videoURL)
 
                 let out: Output
@@ -121,7 +220,8 @@ enum LivePhotoGenerator {
 
     // MARK: - Still image (key photo)
 
-    private static func writeStill(asset: AVURLAsset, seconds: Double, assetID: String, to url: URL) throws {
+    private static func writeStill(asset: AVURLAsset, seconds: Double, assetID: String,
+                                   meta: SourceMeta, to url: URL) throws {
         let gen = AVAssetImageGenerator(asset: asset)
         gen.appliesPreferredTrackTransform = true
         gen.requestedTimeToleranceBefore = .zero
@@ -135,9 +235,30 @@ enum LivePhotoGenerator {
         guard let dest = CGImageDestinationCreateWithURL(url as CFURL, type, 1, nil) else {
             throw GenError.stillWrite
         }
+
         // Embed the asset identifier into the Apple maker note (key "17").
-        let makerApple: [String: Any] = ["17": assetID]
-        let props: [CFString: Any] = [kCGImagePropertyMakerAppleDictionary: makerApple]
+        var props: [CFString: Any] = [
+            kCGImagePropertyMakerAppleDictionary: ["17": assetID]
+        ]
+
+        // Carry over date / camera / GPS from the source video.
+        var tiff: [CFString: Any] = [:]
+        if let make = meta.make { tiff[kCGImagePropertyTIFFMake] = make }
+        if let model = meta.model { tiff[kCGImagePropertyTIFFModel] = model }
+        if let software = meta.software { tiff[kCGImagePropertyTIFFSoftware] = software }
+        if let date = meta.creationDate {
+            let s = exifDateFormatter.string(from: date)
+            tiff[kCGImagePropertyTIFFDateTime] = s
+            props[kCGImagePropertyExifDictionary] = [
+                kCGImagePropertyExifDateTimeOriginal: s,
+                kCGImagePropertyExifDateTimeDigitized: s
+            ]
+        }
+        if !tiff.isEmpty { props[kCGImagePropertyTIFFDictionary] = tiff }
+        if let loc = meta.isoLocation, let gps = gpsDictionary(fromISO6709: loc) {
+            props[kCGImagePropertyGPSDictionary] = gps
+        }
+
         CGImageDestinationAddImage(dest, cg, props as CFDictionary)
         guard CGImageDestinationFinalize(dest) else {
             throw GenError.stillWrite
@@ -151,6 +272,7 @@ enum LivePhotoGenerator {
                                    durationSeconds: Double,
                                    coverSeconds: Double,
                                    assetID: String,
+                                   meta: SourceMeta,
                                    to url: URL) throws {
 
         let videoTracks = asset.tracks(withMediaType: .video)
@@ -189,15 +311,29 @@ enum LivePhotoGenerator {
         do { writer = try AVAssetWriter(outputURL: url, fileType: .mov) }
         catch { throw GenError.writerInit(error.localizedDescription) }
 
-        // Content identifier ties the movie to the still.
+        // Movie-level metadata: content identifier (ties to the still) + carried-over
+        // creation date / location / camera info from the source.
         let cidItem = AVMutableMetadataItem()
         cidItem.identifier = contentID
         cidItem.dataType = utf8Type
         cidItem.value = assetID as NSString
-        writer.metadata = [cidItem]
+
+        var movieMeta: [AVMetadataItem] = [cidItem]
+        if let date = meta.creationDate {
+            movieMeta.append(qtItem(.quickTimeMetadataCreationDate, iso8601Out.string(from: date)))
+        }
+        if let loc = meta.isoLocation {
+            movieMeta.append(qtItem(.quickTimeMetadataLocationISO6709, loc))
+        }
+        if let make = meta.make { movieMeta.append(qtItem(.quickTimeMetadataMake, make)) }
+        if let model = meta.model { movieMeta.append(qtItem(.quickTimeMetadataModel, model)) }
+        if let software = meta.software { movieMeta.append(qtItem(.quickTimeMetadataSoftware, software)) }
+        writer.metadata = movieMeta
 
         // Video input (re-encode so output is GOP-independent and trims cleanly).
-        let natural = vTrack.naturalSize.applying(vTrack.preferredTransform)
+        // Use the NATIVE encoded size and carry the rotation via the track transform —
+        // setting the rotated (display) size here would stretch portrait video.
+        let natural = vTrack.naturalSize
         let w = abs(natural.width), h = abs(natural.height)
         let vIn = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264,

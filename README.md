@@ -24,6 +24,8 @@ dragging a window over the timeline; export a single `.pvt` package that you dra
 - Exports a `.pvt` package — a bundle that shows up as **a single file** in Finder.
 - Drag the `.pvt` into **Photos**, **or AirDrop it to your iPhone** — either way it becomes
   one Live Photo. **No Photos-library permission needed.**
+- Preserves the source video's **date, GPS location and camera make/model**, and keeps
+  **portrait videos at the correct aspect ratio**.
 
 ### Why `.pvt`?
 A Live Photo is fundamentally a **pair**: a still (HEIC) + a video (MOV) linked by a shared
@@ -104,6 +106,7 @@ the recipient may need to **right-click → Open** the first time, or allow it u
 - Live Photo 时长**可在 1–10 秒之间调节**(默认 3 秒;封面取片段中点那一帧)。
 - 导出一个 `.pvt` 包 —— 在 Finder 里显示为**单个文件**。
 - 把 `.pvt` 拖进**「照片」**,或**直接 AirDrop 到 iPhone** —— 都会得到一张 Live Photo,**无需任何权限**。
+- 保留原视频的**拍摄日期、GPS 位置、设备型号**,竖屏视频**比例正确不变形**。
 
 ### 为什么用 `.pvt`?
 Live Photo 本质上是**一对文件**:静帧(HEIC)+ 视频(MOV),靠相同的「内容标识符」配对。
