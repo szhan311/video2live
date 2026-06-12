@@ -8,6 +8,7 @@ struct ContentView: View {
     @State private var isGenerating = false
     @State private var isDropTargeted = false
     @AppStorage("liveconverter.outputDir") private var outputDirPath = ""
+    @AppStorage(L.prefKey) private var langPref = "auto"
 
     /// Where the paired HEIC + MOV are written. Defaults to ~/Pictures/LiveConverter.
     private var outputDir: URL {
@@ -138,6 +139,12 @@ struct ContentView: View {
         }
         .padding(18)
         .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
+        .onChange(of: langPref) { _ in
+            // Re-localize the idle greeting immediately (other labels re-render on their own).
+            if model.asset == nil && !model.isBusy && !isGenerating {
+                model.status = L.t("Open a video file to begin.", "请打开一个视频文件开始。")
+            }
+        }
     }
 
     private var header: some View {
@@ -148,8 +155,16 @@ struct ContentView: View {
                 Label(L.t("Open Video…", "打开视频…"), systemImage: "folder")
             }
             Spacer()
-            Text("video2live")
-                .font(.callout).foregroundStyle(.secondary)
+            Picker(selection: $langPref) {
+                Text(L.t("Auto", "自动（跟随系统）")).tag("auto")
+                Text("English").tag("en")
+                Text("中文").tag("zh")
+            } label: {
+                Image(systemName: "globe")
+            }
+            .pickerStyle(.menu)
+            .fixedSize()
+            .help(L.t("Language", "语言"))
         }
     }
 

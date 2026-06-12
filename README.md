@@ -58,8 +58,8 @@ Or for development: `swift build -c release`.
    a Live Photo.
 
 ### Language
-The UI is **bilingual**: it shows English or Chinese automatically based on your macOS
-system language.
+The UI is **bilingual** (English / Chinese). Use the **globe menu** at the top-right to pick
+**Auto / English / 中文**; *Auto* follows your macOS system language. The choice is remembered.
 
 ### Duration
 The length is **adjustable in-app** with the **Length** slider (1–10 s) and is remembered
@@ -136,7 +136,7 @@ open video2live.app
 5. 在访达里把 **`.pvt` 拖进「照片」**,或**直接 AirDrop 到 iPhone** → 即成为一张 Live Photo。
 
 ### 语言
-界面**中英双语**,会根据 macOS 系统语言自动显示中文或英文。
+界面**中英双语**。用右上角的**地球菜单**选择 **自动 / English / 中文**;「自动」跟随 macOS 系统语言。选择会被记住。
 
 ### 时长
 时长可在**应用内**用 **时长** 滑块调节(1–10 秒),并会记住上次的设置。首次运行的默认值由
