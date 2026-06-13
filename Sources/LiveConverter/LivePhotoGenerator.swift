@@ -60,7 +60,20 @@ enum LivePhotoGenerator {
 
     private static func extractMeta(from asset: AVAsset) -> SourceMeta {
         var m = SourceMeta()
-        let all = asset.metadata
+
+        // Gather metadata from every source the asset exposes: top-level, common,
+        // each container format, and the video track — real-world files scatter
+        // date/location across different keyspaces.
+        var all = asset.metadata + asset.commonMetadata
+        for fmt in asset.availableMetadataFormats {
+            all += asset.metadata(forFormat: fmt)
+        }
+        if let vTrack = asset.tracks(withMediaType: .video).first {
+            all += vTrack.metadata
+            for fmt in vTrack.availableMetadataFormats {
+                all += vTrack.metadata(forFormat: fmt)
+            }
+        }
 
         func firstString(_ ids: [AVMetadataIdentifier]) -> String? {
             for id in ids {
@@ -82,12 +95,17 @@ enum LivePhotoGenerator {
             return nil
         }
 
-        m.creationDate = firstDate([.quickTimeMetadataCreationDate, .commonIdentifierCreationDate])
+        m.creationDate = firstDate([.quickTimeMetadataCreationDate,
+                                    .quickTimeUserDataCreationDate,
+                                    .commonIdentifierCreationDate])
             ?? asset.creationDate?.dateValue
-        m.isoLocation = firstString([.quickTimeMetadataLocationISO6709, .commonIdentifierLocation])
-        m.make = firstString([.quickTimeMetadataMake, .commonIdentifierMake])
-        m.model = firstString([.quickTimeMetadataModel, .commonIdentifierModel])
-        m.software = firstString([.quickTimeMetadataSoftware, .commonIdentifierSoftware])
+        m.isoLocation = firstString([.quickTimeMetadataLocationISO6709,
+                                     .quickTimeUserDataLocationISO6709,
+                                     .commonIdentifierLocation])
+        m.make = firstString([.quickTimeMetadataMake, .quickTimeUserDataMake, .commonIdentifierMake])
+        m.model = firstString([.quickTimeMetadataModel, .quickTimeUserDataModel, .commonIdentifierModel])
+        m.software = firstString([.quickTimeMetadataSoftware, .quickTimeUserDataSoftware,
+                                  .commonIdentifierSoftware])
         return m
     }
 

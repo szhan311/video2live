@@ -106,18 +106,32 @@ final class VideoModel: ObservableObject {
         player.seek(to: t, toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
+    private var boundaryObserver: Any?
+
+    private func clearBoundaryObserver() {
+        if let o = boundaryObserver {
+            player.removeTimeObserver(o)
+            boundaryObserver = nil
+        }
+    }
+
     /// Play just the selected window once, then pause.
     func previewSegment() {
         guard asset != nil else { return }
+        // Remove any stale "pause at end" observer from a previous preview — otherwise an
+        // old boundary can fire mid-playback and stop after just 1–2s.
+        clearBoundaryObserver()
         let start = CMTime(seconds: selectionStart, preferredTimescale: 600)
+        let endTime = CMTime(seconds: selectionStart + windowDuration, preferredTimescale: 600)
         player.seek(to: start, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             guard let self else { return }
             self.player.play()
-            let end = self.selectionStart + self.windowDuration
-            let endTime = CMTime(seconds: end, preferredTimescale: 600)
-            self.player.addBoundaryTimeObserver(forTimes: [NSValue(time: endTime)], queue: .main) { [weak self] in
-                self?.player.pause()
-                self?.seekToCover()
+            self.boundaryObserver = self.player.addBoundaryTimeObserver(
+                forTimes: [NSValue(time: endTime)], queue: .main) { [weak self] in
+                guard let self else { return }
+                self.player.pause()
+                self.clearBoundaryObserver()
+                self.seekToCover()
             }
         }
     }
