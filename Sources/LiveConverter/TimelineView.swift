@@ -13,6 +13,7 @@ struct TimelineView: View {
             let usable = max(width - windowWidth, 0.0001)
             let startFrac = model.maxStart > 0 ? (model.selectionStart / model.maxStart) : 0
             let xOffset = usable * startFrac
+            let coverX = xOffset + CGFloat(model.coverFraction) * windowWidth
 
             ZStack(alignment: .leading) {
                 // Thumbnail strip
@@ -64,7 +65,36 @@ struct TimelineView: View {
                                 model.refreshCover()
                             }
                     )
+
+                // Key-photo marker (drag to choose which frame becomes the cover)
+                if model.asset != nil {
+                    ZStack {
+                        Rectangle()
+                            .fill(Color.white)
+                            .frame(width: 2, height: geo.size.height)
+                            .shadow(radius: 1)
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 9))
+                            .foregroundColor(.black)
+                            .padding(4)
+                            .background(Circle().fill(Color.white))
+                            .offset(y: -geo.size.height / 2 + 9)
+                    }
+                    .frame(width: 22, height: geo.size.height + 8)
+                    .contentShape(Rectangle())
+                    .position(x: coverX, y: geo.size.height / 2)
+                    .gesture(
+                        DragGesture(coordinateSpace: .named("timeline"))
+                            .onChanged { value in
+                                guard windowWidth > 0 else { return }
+                                let f = (value.location.x - xOffset) / windowWidth
+                                model.setCoverFraction(Double(f))
+                            }
+                            .onEnded { _ in model.refreshCover() }
+                    )
+                }
             }
+            .coordinateSpace(name: "timeline")
         }
         .frame(height: 88)
         .opacity(model.thumbnails.isEmpty ? 0.3 : 1)

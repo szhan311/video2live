@@ -38,9 +38,18 @@ final class VideoModel: ObservableObject {
         max(0, totalDuration - windowDuration)
     }
 
-    /// The frame used as the Live Photo's key photo (middle of the window).
+    /// Position of the key photo inside the selection window, 0…1 (default = middle).
+    @Published var coverFraction: Double = 0.5
+
+    /// The frame used as the Live Photo's key photo.
     var coverTime: Double {
-        selectionStart + windowDuration / 2
+        selectionStart + coverFraction * windowDuration
+    }
+
+    /// Move the key-photo marker within the window (called by the timeline).
+    func setCoverFraction(_ f: Double) {
+        coverFraction = min(max(f, 0), 1)
+        seekToCover()
     }
 
     func load(url: URL) {
@@ -67,6 +76,7 @@ final class VideoModel: ObservableObject {
                     self.sourceURL = url
                     self.totalDuration = seconds
                     self.selectionStart = 0
+                    self.coverFraction = 0.5
                     self.thumbnails = thumbs
                     self.player.replaceCurrentItem(with: AVPlayerItem(asset: asset))
                     self.isBusy = false

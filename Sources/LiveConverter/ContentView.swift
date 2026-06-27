@@ -97,6 +97,10 @@ struct ContentView: View {
                     }
                     .disabled(model.asset == nil)
                 }
+                Text(L.t("Drag the yellow box to choose the clip; drag the white 📷 marker to pick the key photo frame.",
+                         "拖黄色框选片段；拖白色 📷 标记选封面帧。"))
+                    .font(.caption2).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             Divider()
