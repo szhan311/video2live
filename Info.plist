@@ -9,11 +9,28 @@
     <key>CFBundleIdentifier</key>
     <string>com.shawn.video2live</string>
     <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>1.4.1</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>1.4.1</string>
     <key>CFBundleExecutable</key>
     <string>video2live</string>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Live Photo Package</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.shawn.video2live.pvt</string>
+            </array>
+            <key>LSTypeIsPackage</key>
+            <true/>
+        </dict>
+    </array>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>
@@ -22,5 +39,25 @@
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>com.apple.package</string>
+            </array>
+            <key>UTTypeDescription</key>
+            <string>Live Photo Package</string>
+            <key>UTTypeIdentifier</key>
+            <string>com.shawn.video2live.pvt</string>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>pvt</string>
+                </array>
+            </dict>
+        </dict>
+    </array>
 </dict>
 </plist>

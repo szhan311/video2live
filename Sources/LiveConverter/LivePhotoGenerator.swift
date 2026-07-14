@@ -174,34 +174,48 @@ enum LivePhotoGenerator {
 
         let queue = DispatchQueue(label: "live.generator", qos: .userInitiated)
         queue.async {
+            let fileManager = FileManager.default
             let assetID = UUID().uuidString
-            let base = "LivePhoto_\(Int(Date().timeIntervalSince1970))"
-            let photoURL = outputDirectory.appendingPathComponent(base + ".heic")
-            let videoURL = outputDirectory.appendingPathComponent(base + ".mov")
+            let base = "LivePhoto_\(Int(Date().timeIntervalSince1970))_\(assetID.prefix(8))"
+            let workDir = outputDirectory.appendingPathComponent(".\(base).tmp", isDirectory: true)
+            let stagedPhotoURL = workDir.appendingPathComponent(base + ".heic")
+            let stagedVideoURL = workDir.appendingPathComponent(base + ".mov")
 
             do {
-                try? FileManager.default.removeItem(at: photoURL)
-                try? FileManager.default.removeItem(at: videoURL)
+                try fileManager.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+                try? fileManager.removeItem(at: workDir)
+                try fileManager.createDirectory(at: workDir, withIntermediateDirectories: true)
+                defer { try? fileManager.removeItem(at: workDir) }
 
                 let meta = extractMeta(from: asset)
-                try writeStill(asset: asset, seconds: coverSeconds, assetID: assetID, meta: meta, to: photoURL)
+                try writeStill(asset: asset, seconds: coverSeconds, assetID: assetID, meta: meta, to: stagedPhotoURL)
                 try writeVideo(asset: asset,
                                startSeconds: startSeconds,
                                durationSeconds: durationSeconds,
                                coverSeconds: coverSeconds,
                                assetID: assetID,
                                meta: meta,
-                               to: videoURL)
+                               to: stagedVideoURL)
 
                 let out: Output
                 switch format {
                 case .pair:
+                    let photoURL = outputDirectory.appendingPathComponent(base + ".heic")
+                    let videoURL = outputDirectory.appendingPathComponent(base + ".mov")
+                    try? fileManager.removeItem(at: photoURL)
+                    try? fileManager.removeItem(at: videoURL)
+                    try fileManager.moveItem(at: stagedPhotoURL, to: photoURL)
+                    try fileManager.moveItem(at: stagedVideoURL, to: videoURL)
                     out = Output(photoURL: photoURL, videoURL: videoURL,
                                  assetID: assetID, revealURLs: [photoURL, videoURL])
                 case .pvt:
-                    let pvtURL = try packagePVT(base: base, photoURL: photoURL,
-                                                videoURL: videoURL, in: outputDirectory)
-                    out = Output(photoURL: photoURL, videoURL: videoURL,
+                    let stagedPVTURL = try packagePVT(base: base, photoURL: stagedPhotoURL,
+                                                      videoURL: stagedVideoURL, in: workDir)
+                    let pvtURL = outputDirectory.appendingPathComponent(base + ".pvt", isDirectory: true)
+                    try? fileManager.removeItem(at: pvtURL)
+                    try fileManager.moveItem(at: stagedPVTURL, to: pvtURL)
+                    out = Output(photoURL: pvtURL.appendingPathComponent(base + ".heic"),
+                                 videoURL: pvtURL.appendingPathComponent(base + ".mov"),
                                  assetID: assetID, revealURLs: [pvtURL])
                 }
                 DispatchQueue.main.async { completion(.success(out)) }
@@ -233,7 +247,15 @@ enum LivePhotoGenerator {
         """
         try plist.write(to: pvtURL.appendingPathComponent("metadata.plist"),
                         atomically: true, encoding: .utf8)
+        markAsPackage(pvtURL)
         return pvtURL
+    }
+
+    private static func markAsPackage(_ url: URL) {
+        var packageURL = url
+        var values = URLResourceValues()
+        values.isPackage = true
+        try? packageURL.setResourceValues(values)
     }
 
     // MARK: - Still image (key photo)
