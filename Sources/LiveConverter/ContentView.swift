@@ -27,10 +27,11 @@ struct ContentView: View {
     @AppStorage("liveconverter.outputDir") private var outputDirPath = ""
     @AppStorage(L.prefKey) private var langPref = "auto"
 
-    private let editorMaxWidth: CGFloat = 1620
-    private let colorPanelWidth: CGFloat = 520
-    private let singleMediaMaxWidth: CGFloat = 980
-    private let threeUpMediaMaxWidth: CGFloat = 1080
+    private let editorMaxWidth: CGFloat = 1514
+    private let colorPanelWidth: CGFloat = 600
+    private let singleMediaMaxWidth: CGFloat = 900
+    private let threeUpMediaMaxWidth: CGFloat = 900
+    private let threeUpPreviewWidth: CGFloat = 700
     private let threeUpSlotWidth: CGFloat = 190
 
     /// Where the paired HEIC + MOV are written. Defaults to ~/Pictures/LiveConverter.
@@ -246,7 +247,10 @@ struct ContentView: View {
         VStack(spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
                 threeUpPreview
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .frame(minWidth: 520,
+                           idealWidth: threeUpPreviewWidth,
+                           maxWidth: threeUpPreviewWidth,
+                           alignment: .topLeading)
 
                 VStack(spacing: 8) {
                     ForEach(0..<3, id: \.self) { index in
