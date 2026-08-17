@@ -11,7 +11,6 @@ private enum WorkMode: String {
 private enum ColorSection: String {
     case basics
     case wheels
-    case curve
     case warper
 }
 
@@ -157,52 +156,38 @@ struct ContentView: View {
     }
 
     private var singleEditor: some View {
-        VStack(spacing: 14) {
-            // Player + key-photo preview
-            HStack(spacing: 12) {
-                ZStack {
-                    VideoPlayer(player: model.player)
-                        .background(Color.black)
-                    if model.asset == nil {
-                        VStack(spacing: 8) {
-                            Image(systemName: "arrow.down.doc.fill")
-                                .font(.system(size: 34))
-                                .foregroundStyle(.secondary)
-                            Text(L.t("Drop a video here, or click “Open Video…”",
-                                     "把视频拖到这里，或点「打开视频…」"))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .frame(minHeight: 260)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(isDropTargeted ? Color.accentColor : Color.clear, lineWidth: 3)
-                )
+        HStack(alignment: .top, spacing: 14) {
+            singleMediaPanel
+                .frame(maxWidth: .infinity, alignment: .top)
 
-                VStack(spacing: 6) {
-                    Text(L.t("Key photo", "封面帧")).font(.caption).foregroundStyle(.secondary)
-                    Group {
-                        if let cover = model.coverPreview {
-                            Image(nsImage: cover)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                        } else {
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.gray.opacity(0.2))
-                                .overlay(Image(systemName: "photo").foregroundStyle(.secondary))
-                        }
+            colorSidePanel
+                .frame(maxWidth: .infinity, alignment: .top)
+        }
+    }
+
+    private var singleMediaPanel: some View {
+        VStack(spacing: 10) {
+            ZStack {
+                VideoPlayer(player: model.player)
+                    .background(Color.black)
+                if model.asset == nil {
+                    VStack(spacing: 8) {
+                        Image(systemName: "arrow.down.doc.fill")
+                            .font(.system(size: 34))
+                            .foregroundStyle(.secondary)
+                        Text(L.t("Drop a video here, or click “Open Video…”",
+                                 "把视频拖到这里，或点「打开视频…」"))
+                            .foregroundStyle(.secondary)
                     }
-                    .frame(width: 160, height: 200)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
             }
+            .frame(height: 300)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(isDropTargeted ? Color.accentColor : Color.clear, lineWidth: 3)
+            )
 
-            durationSlider
-            colorGradePanel
-
-            // Timeline + selection
             VStack(spacing: 6) {
                 TimelineView(model: model)
                 HStack {
@@ -224,21 +209,32 @@ struct ContentView: View {
     }
 
     private var threeUpEditor: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 10) {
-                ForEach(0..<3, id: \.self) { index in
-                    threeUpSlot(index)
+        HStack(alignment: .top, spacing: 14) {
+            threeUpMediaPanel
+                .frame(maxWidth: .infinity, alignment: .top)
+
+            colorSidePanel
+                .frame(maxWidth: .infinity, alignment: .top)
+        }
+    }
+
+    private var threeUpMediaPanel: some View {
+        VStack(spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(spacing: 8) {
+                    ForEach(0..<3, id: \.self) { index in
+                        threeUpSlot(index)
+                    }
                 }
+                .frame(width: 172)
+
+                threeUpSelectedControls
+                    .frame(maxWidth: .infinity, alignment: .top)
             }
-            .frame(height: 260)
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
                     .strokeBorder(isDropTargeted ? Color.accentColor : Color.clear, lineWidth: 3)
             )
-
-            durationSlider
-            colorGradePanel
-            threeUpSelectedControls
 
             HStack {
                 Text(threeUpRangeLabel)
@@ -276,7 +272,7 @@ struct ContentView: View {
 
             if index < collageModel.clips.count {
                 let clip = collageModel.clips[index]
-                VStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Group {
                         if let thumbnail = clip.thumbnail {
                             Image(nsImage: thumbnail)
@@ -288,29 +284,32 @@ struct ContentView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 180)
+                    .frame(width: 56, height: 56)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
                     .clipped()
 
-                    Text(clip.url.lastPathComponent)
-                        .font(.caption)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    HStack(spacing: 6) {
-                        Text(String(format: "%.1f s", clip.duration))
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(L.t("Clip \(index + 1)", "素材 \(index + 1)"))
+                            .font(.caption.weight(.semibold))
+                        Text(clip.url.lastPathComponent)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                        Spacer()
-                        Image(systemName: clip.audioEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
-                            .font(.caption)
-                            .foregroundStyle(clip.audioEnabled ? Color.accentColor : Color.secondary)
-                            .help(clip.audioEnabled
-                                  ? L.t("Sound kept for this clip", "这个素材会保留声音")
-                                  : L.t("Sound muted for this clip", "这个素材会静音"))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        HStack(spacing: 6) {
+                            Text(String(format: "%.1f s", clip.duration))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                            Image(systemName: clip.audioEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                                .font(.caption2)
+                                .foregroundStyle(clip.audioEnabled ? Color.accentColor : Color.secondary)
+                                .help(clip.audioEnabled
+                                      ? L.t("Sound kept for this clip", "这个素材会保留声音")
+                                      : L.t("Sound muted for this clip", "这个素材会静音"))
+                        }
                     }
-                    .frame(maxWidth: .infinity)
+                    Spacer(minLength: 0)
                 }
                 .padding(8)
 
@@ -318,22 +317,29 @@ struct ContentView: View {
                     collageModel.remove(clip)
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 18))
+                        .font(.system(size: 16))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.white, .black.opacity(0.7))
-                .padding(8)
+                .padding(6)
             } else {
-                VStack(spacing: 8) {
+                HStack(spacing: 8) {
                     Image(systemName: "plus.rectangle.on.rectangle")
-                        .font(.system(size: 30))
+                        .font(.system(size: 22))
                         .foregroundStyle(.secondary)
-                    Text(L.t("Clip \(index + 1)", "素材 \(index + 1)"))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(L.t("Clip \(index + 1)", "素材 \(index + 1)"))
+                            .font(.caption.weight(.semibold))
+                        Text(L.t("Choose video", "选择视频"))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
                 }
+                .padding(10)
             }
         }
+        .frame(height: 74)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
@@ -358,98 +364,94 @@ struct ContentView: View {
                 let maxStart = collageModel.maxStart(for: index, targetDuration: model.targetDuration)
                 let canAdjustStart = maxStart.isFinite && maxStart > 0.000001
 
-                HStack(spacing: 12) {
-                    ZStack {
-                        VideoPlayer(player: collageModel.player)
-                            .background(Color.black)
-                        if outputDuration <= 0 {
-                            Color.black.opacity(0.45)
-                            Text(L.t("Selected range is too short", "选中区间太短"))
-                                .font(.caption)
-                                .foregroundStyle(.white)
-                        }
+                ZStack {
+                    VideoPlayer(player: collageModel.player)
+                        .background(Color.black)
+                    if outputDuration <= 0 {
+                        Color.black.opacity(0.45)
+                        Text(L.t("Selected range is too short", "选中区间太短"))
+                            .font(.caption)
+                            .foregroundStyle(.white)
                     }
-                    .frame(width: 260, height: 150)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .frame(height: 154)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                    VStack(spacing: 10) {
-                        HStack(spacing: 8) {
-                            Label(L.t("Clip \(index + 1)", "素材 \(index + 1)"),
-                                  systemImage: "film")
-                                .font(.callout.weight(.semibold))
-                            Text(clip.url.lastPathComponent)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            Spacer()
-                            Toggle(isOn: Binding(
+                HStack(spacing: 8) {
+                    Label(L.t("Clip \(index + 1)", "素材 \(index + 1)"),
+                          systemImage: "film")
+                        .font(.callout.weight(.semibold))
+                    Text(clip.url.lastPathComponent)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer()
+                    Toggle(isOn: Binding(
+                        get: {
+                            collageModel.clips.indices.contains(index)
+                                ? collageModel.clips[index].audioEnabled
+                                : false
+                        },
+                        set: { collageModel.setAudioEnabled($0, for: index) }
+                    )) {
+                        Label(L.t("Keep sound", "保留声音"),
+                              systemImage: clip.audioEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                    }
+                    .toggleStyle(.switch)
+                    .fixedSize()
+                    .help(L.t("Include this clip's audio in the exported three-up video.",
+                              "导出三拼视频时是否保留这个素材的声音。"))
+                }
+
+                HStack(spacing: 8) {
+                    Text(L.t("Range", "区间"))
+                        .font(.caption)
+                        .frame(width: 42, alignment: .leading)
+                    if canAdjustStart {
+                        Slider(
+                            value: Binding(
                                 get: {
-                                    collageModel.clips.indices.contains(index)
-                                        ? collageModel.clips[index].audioEnabled
-                                        : false
+                                    guard collageModel.clips.indices.contains(index) else { return 0 }
+                                    return safeSliderValue(collageModel.clips[index].startSeconds,
+                                                           upperBound: maxStart)
                                 },
-                                set: { collageModel.setAudioEnabled($0, for: index) }
-                            )) {
-                                Label(L.t("Keep sound", "保留声音"),
-                                      systemImage: clip.audioEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
-                            }
-                            .toggleStyle(.switch)
-                            .fixedSize()
-                            .help(L.t("Include this clip's audio in the exported three-up video.",
-                                      "导出三拼视频时是否保留这个素材的声音。"))
-                        }
-
-                        HStack(spacing: 8) {
-                            Text(L.t("Range", "区间"))
-                                .font(.caption)
-                                .frame(width: 46, alignment: .leading)
-                            if canAdjustStart {
-                                Slider(
-                                    value: Binding(
-                                        get: {
-                                            guard collageModel.clips.indices.contains(index) else { return 0 }
-                                            return safeSliderValue(collageModel.clips[index].startSeconds,
-                                                                   upperBound: maxStart)
-                                        },
-                                        set: {
-                                            collageModel.setStart($0,
-                                                                  for: index,
-                                                                  targetDuration: model.targetDuration)
-                                        }
-                                    ),
-                                    in: 0...maxStart
-                                )
-                            } else {
-                                Slider(value: .constant(0), in: 0...1)
-                                    .disabled(true)
-                            }
-                            Text(String(format: "%.1f → %.1f s",
-                                        clip.startSeconds,
-                                        clip.startSeconds + outputDuration))
-                                .font(.caption)
-                                .monospacedDigit()
-                                .foregroundStyle(.secondary)
-                                .frame(width: 92, alignment: .trailing)
-                        }
-
-                        HStack(spacing: 8) {
-                            Text(String(format: L.t("Source %.1f s, output %.1f s",
-                                                    "素材 %.1f 秒，输出 %.1f 秒"),
-                                        clip.duration,
-                                        outputDuration))
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                            Spacer()
-                            Button {
-                                collageModel.previewSelected(targetDuration: model.targetDuration)
-                            } label: {
-                                Label(L.t("Preview clip", "预览素材"), systemImage: "play.fill")
-                            }
-                            .disabled(outputDuration <= 0)
-                        }
+                                set: {
+                                    collageModel.setStart($0,
+                                                          for: index,
+                                                          targetDuration: model.targetDuration)
+                                }
+                            ),
+                            in: 0...maxStart
+                        )
+                    } else {
+                        Slider(value: .constant(0), in: 0...1)
+                            .disabled(true)
                     }
+                    Text(String(format: "%.1f → %.1f s",
+                                clip.startSeconds,
+                                clip.startSeconds + outputDuration))
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(width: 92, alignment: .trailing)
+                }
+
+                HStack(spacing: 8) {
+                    Text(String(format: L.t("Source %.1f s, output %.1f s",
+                                            "素材 %.1f 秒，输出 %.1f 秒"),
+                                clip.duration,
+                                outputDuration))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                    Spacer()
+                    Button {
+                        collageModel.previewSelected(targetDuration: model.targetDuration)
+                    } label: {
+                        Label(L.t("Preview clip", "预览素材"), systemImage: "play.fill")
+                    }
+                    .disabled(outputDuration <= 0)
                 }
 
                 if collageModel.clips.count == 3 {
@@ -461,12 +463,12 @@ struct ContentView: View {
                         .font(.system(size: 24))
                         .foregroundStyle(.secondary)
                     Text(L.t("Choose or drop videos, then click a clip above to edit it.",
-                             "选择或拖入视频后，点击上方素材即可编辑。"))
+                             "选择或拖入视频后，点击左侧素材即可编辑。"))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     Spacer()
                 }
-                .frame(height: 150)
+                .frame(minHeight: 238)
             }
         }
     }
@@ -518,6 +520,16 @@ struct ContentView: View {
                 .font(.callout).monospacedDigit()
                 .frame(width: 46, alignment: .trailing)
         }
+        .padding(10)
+        .background(Color.gray.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var colorSidePanel: some View {
+        VStack(spacing: 12) {
+            durationSlider
+            colorGradePanel
+        }
     }
 
     private var colorGradePanel: some View {
@@ -562,7 +574,6 @@ struct ContentView: View {
                 Picker(selection: $colorSection) {
                     Text(L.t("Basics", "基础")).tag(ColorSection.basics)
                     Text(L.t("Wheels", "色轮")).tag(ColorSection.wheels)
-                    Text(L.t("Curve", "曲线")).tag(ColorSection.curve)
                     Text("Warper").tag(ColorSection.warper)
                 } label: {
                     EmptyView()
@@ -580,8 +591,7 @@ struct ContentView: View {
 
     private var colorGradeColumns: [GridItem] {
         [
-            GridItem(.flexible(minimum: 320), spacing: 12),
-            GridItem(.flexible(minimum: 320), spacing: 12)
+            GridItem(.flexible(minimum: 260), spacing: 8)
         ]
     }
 
@@ -592,8 +602,6 @@ struct ContentView: View {
             basicColorControls
         case .wheels:
             colorWheelControls
-        case .curve:
-            curveControls
         case .warper:
             warperControls
         }
@@ -606,36 +614,42 @@ struct ContentView: View {
                               keyPath: \.exposure,
                               range: -1...1,
                               step: 0.05,
+                              defaultValue: 0,
                               valueText: String(format: "%+.2f", colorGrade.exposure))
             colorGradeControl(L.t("Contrast", "对比度"),
                               systemImage: "circle.lefthalf.filled",
                               keyPath: \.contrast,
                               range: 0.5...1.8,
                               step: 0.05,
+                              defaultValue: 1,
                               valueText: String(format: "%.0f%%", colorGrade.contrast * 100))
             colorGradeControl(L.t("Saturation", "饱和度"),
                               systemImage: "drop.fill",
                               keyPath: \.saturation,
                               range: 0...2,
                               step: 0.05,
+                              defaultValue: 1,
                               valueText: String(format: "%.0f%%", colorGrade.saturation * 100))
             colorGradeControl(L.t("Warmth", "色温"),
                               systemImage: "thermometer.sun.fill",
                               keyPath: \.warmth,
                               range: -1...1,
                               step: 0.05,
+                              defaultValue: 0,
                               valueText: String(format: "%+.0f", colorGrade.warmth * 100))
             colorGradeControl(L.t("Tint", "色调"),
                               systemImage: "eyedropper.halffull",
                               keyPath: \.tint,
                               range: -1...1,
                               step: 0.05,
+                              defaultValue: 0,
                               valueText: String(format: "%+.0f", colorGrade.tint * 100))
             colorGradeControl(L.t("Vignette", "暗角"),
                               systemImage: "circle.dotted",
                               keyPath: \.vignette,
                               range: 0...0.8,
                               step: 0.05,
+                              defaultValue: 0,
                               valueText: String(format: "%.0f%%", colorGrade.vignette * 100))
         }
     }
@@ -649,11 +663,6 @@ struct ContentView: View {
             ColorWheelPad(title: L.t("Highlights", "高光"),
                           wheel: colorWheelBinding(\.highlights))
         }
-    }
-
-    private var curveControls: some View {
-        ToneCurveEditor(curve: toneCurveBinding)
-            .frame(minHeight: 202)
     }
 
     private var warperControls: some View {
@@ -680,6 +689,7 @@ struct ContentView: View {
                                    keyPath: WritableKeyPath<ColorGrade, Double>,
                                    range: ClosedRange<Double>,
                                    step: Double,
+                                   defaultValue: Double,
                                    valueText: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: systemImage)
@@ -696,6 +706,14 @@ struct ContentView: View {
                 .frame(width: 48, alignment: .trailing)
         }
         .frame(minHeight: 24)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            var next = colorGrade
+            next[keyPath: keyPath] = defaultValue
+            setCustomColorGrade(next)
+        }
+        .help(L.t("Double-click to reset this adjustment.",
+                  "双击恢复此项默认值。"))
     }
 
     private func colorGradeBinding(_ keyPath: WritableKeyPath<ColorGrade, Double>) -> Binding<Double> {
@@ -721,17 +739,6 @@ struct ContentView: View {
         )
     }
 
-    private var toneCurveBinding: Binding<ColorGrade.ToneCurve> {
-        Binding(
-            get: { colorGrade.toneCurve },
-            set: { value in
-                var next = colorGrade
-                next.toneCurve = value
-                setCustomColorGrade(next)
-            }
-        )
-    }
-
     private var warperBinding: Binding<ColorGrade.ColorWarper> {
         Binding(
             get: { colorGrade.warper },
@@ -745,7 +752,7 @@ struct ContentView: View {
 
     private func setCustomColorGrade(_ next: ColorGrade) {
         colorGrade = next
-        colorPreset = .custom
+        colorPreset = next.isNeutral ? .original : .custom
     }
 
     private func resetColorGrade() {

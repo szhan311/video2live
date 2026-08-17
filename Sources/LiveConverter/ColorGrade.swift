@@ -16,7 +16,6 @@ struct ColorGrade: Equatable {
     var shadows = ColorWheel()
     var midtones = ColorWheel()
     var highlights = ColorWheel()
-    var toneCurve = ToneCurve()
     var warper = ColorWarper()
 
     static let neutral = ColorGrade()
@@ -35,7 +34,6 @@ struct ColorGrade: Equatable {
         !shadows.isNeutral
             || !midtones.isNeutral
             || !highlights.isNeutral
-            || !toneCurve.isNeutral
             || !warper.isNeutral
     }
 
@@ -46,16 +44,6 @@ struct ColorGrade: Equatable {
 
         var isNeutral: Bool {
             abs(x) < 0.0001 && abs(y) < 0.0001 && abs(level) < 0.0001
-        }
-    }
-
-    struct ToneCurve: Equatable {
-        var shadows: Double = 0    // -1...1
-        var midtones: Double = 0   // -1...1
-        var highlights: Double = 0 // -1...1
-
-        var isNeutral: Bool {
-            abs(shadows) < 0.0001 && abs(midtones) < 0.0001 && abs(highlights) < 0.0001
         }
     }
 
@@ -175,8 +163,7 @@ struct ColorGrade: Equatable {
                                   warmth: -0.36, tint: -0.04, vignette: 0.02)
             case .film:
                 return ColorGrade(exposure: -0.04, contrast: 0.96, saturation: 0.86,
-                                  warmth: 0.20, tint: 0.05, vignette: 0.22,
-                                  toneCurve: ToneCurve(shadows: 0.08, midtones: -0.04, highlights: -0.06))
+                                  warmth: 0.20, tint: 0.05, vignette: 0.22)
             case .mono:
                 return ColorGrade(exposure: 0, contrast: 1.18, saturation: 0,
                                   warmth: 0, tint: 0, vignette: 0.16)
@@ -320,11 +307,6 @@ struct ColorGradePipeline {
         if !grade.warper.isNeutral {
             rgb = apply(warper: grade.warper, to: rgb)
         }
-        if !grade.toneCurve.isNeutral {
-            rgb = RGB(red: toneCurveMap(rgb.red, curve: grade.toneCurve),
-                      green: toneCurveMap(rgb.green, curve: grade.toneCurve),
-                      blue: toneCurveMap(rgb.blue, curve: grade.toneCurve))
-        }
 
         return rgb.clamped
     }
@@ -376,26 +358,6 @@ struct ColorGradePipeline {
         return hsvToRGB(hue: hue,
                         saturation: clamp(saturation, 0, 1),
                         value: hsv.value)
-    }
-
-    private static func toneCurveMap(_ value: Double, curve: ColorGrade.ToneCurve) -> Double {
-        let points: [(Double, Double)] = [
-            (0, 0),
-            (0.25, clamp(0.25 + curve.shadows * 0.24, 0, 1)),
-            (0.5, clamp(0.5 + curve.midtones * 0.28, 0, 1)),
-            (0.75, clamp(0.75 + curve.highlights * 0.24, 0, 1)),
-            (1, 1)
-        ]
-
-        for index in 0..<(points.count - 1) {
-            let left = points[index]
-            let right = points[index + 1]
-            guard value >= left.0 && value <= right.0 else { continue }
-            let t = smoothstep((value - left.0) / (right.0 - left.0))
-            return clamp(left.1 + (right.1 - left.1) * t, 0, 1)
-        }
-
-        return clamp(value, 0, 1)
     }
 
     private static func rgbToHSV(red: Double, green: Double, blue: Double)

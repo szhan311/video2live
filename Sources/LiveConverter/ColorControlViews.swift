@@ -105,132 +105,6 @@ private struct ColorWheelField: View {
     }
 }
 
-struct ToneCurveEditor: View {
-    @Binding var curve: ColorGrade.ToneCurve
-
-    var body: some View {
-        VStack(spacing: 8) {
-            GeometryReader { proxy in
-                let points = curvePoints(in: proxy.size)
-                ZStack {
-                    curveGrid(in: proxy.size)
-                        .stroke(Color.primary.opacity(0.16), lineWidth: 1)
-                    curvePath(points)
-                        .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2.5,
-                                                                      lineCap: .round,
-                                                                      lineJoin: .round))
-                    ForEach(CurveHandle.allCases) { handle in
-                        Circle()
-                            .fill(Color.white)
-                            .frame(width: 14, height: 14)
-                            .overlay(Circle().stroke(Color.accentColor, lineWidth: 2))
-                            .position(point(for: handle, in: proxy.size))
-                            .gesture(
-                                DragGesture(minimumDistance: 0)
-                                    .onChanged { drag in update(handle, at: drag.location, in: proxy.size) }
-                            )
-                    }
-                }
-                .contentShape(Rectangle())
-            }
-            .frame(height: 170)
-
-            HStack(spacing: 12) {
-                curveValue(L.t("Shadows", "暗部"), curve.shadows)
-                curveValue(L.t("Midtones", "中间调"), curve.midtones)
-                curveValue(L.t("Highlights", "高光"), curve.highlights)
-            }
-        }
-    }
-
-    private func curveValue(_ title: String, _ value: Double) -> some View {
-        HStack(spacing: 4) {
-            Text(title).font(.caption2).foregroundStyle(.secondary)
-            Text(String(format: "%+.0f", value * 100))
-                .font(.caption2)
-                .monospacedDigit()
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func curveGrid(in size: CGSize) -> Path {
-        Path { path in
-            for step in 0...4 {
-                let frac = CGFloat(step) / 4
-                path.move(to: CGPoint(x: size.width * frac, y: 0))
-                path.addLine(to: CGPoint(x: size.width * frac, y: size.height))
-                path.move(to: CGPoint(x: 0, y: size.height * frac))
-                path.addLine(to: CGPoint(x: size.width, y: size.height * frac))
-            }
-        }
-    }
-
-    private func curvePath(_ points: [CGPoint]) -> Path {
-        var path = Path()
-        guard let first = points.first else { return path }
-        path.move(to: first)
-        for point in points.dropFirst() {
-            path.addLine(to: point)
-        }
-        return path
-    }
-
-    private func curvePoints(in size: CGSize) -> [CGPoint] {
-        [
-            CGPoint(x: 0, y: size.height),
-            point(for: .shadows, in: size),
-            point(for: .midtones, in: size),
-            point(for: .highlights, in: size),
-            CGPoint(x: size.width, y: 0)
-        ]
-    }
-
-    private func point(for handle: CurveHandle, in size: CGSize) -> CGPoint {
-        let x = handle.x
-        let value: Double
-        switch handle {
-        case .shadows:
-            value = x + curve.shadows * 0.24
-        case .midtones:
-            value = x + curve.midtones * 0.28
-        case .highlights:
-            value = x + curve.highlights * 0.24
-        }
-
-        return CGPoint(x: size.width * CGFloat(x),
-                       y: size.height * CGFloat(1 - min(max(value, 0), 1)))
-    }
-
-    private func update(_ handle: CurveHandle, at location: CGPoint, in size: CGSize) {
-        guard size.height > 0 else { return }
-        let value = min(max(1 - Double(location.y / size.height), 0), 1)
-        switch handle {
-        case .shadows:
-            curve.shadows = min(max((value - handle.x) / 0.24, -1), 1)
-        case .midtones:
-            curve.midtones = min(max((value - handle.x) / 0.28, -1), 1)
-        case .highlights:
-            curve.highlights = min(max((value - handle.x) / 0.24, -1), 1)
-        }
-    }
-
-    private enum CurveHandle: CaseIterable, Identifiable {
-        case shadows
-        case midtones
-        case highlights
-
-        var id: String { "\(self)" }
-
-        var x: Double {
-            switch self {
-            case .shadows: return 0.25
-            case .midtones: return 0.5
-            case .highlights: return 0.75
-            }
-        }
-    }
-}
-
 struct ColorWarperPad: View {
     @Binding var warper: ColorGrade.ColorWarper
 
@@ -245,9 +119,7 @@ struct ColorWarperPad: View {
                                          startPoint: .top,
                                          endPoint: .bottom))
                 warperGrid(in: proxy.size)
-                    .stroke(Color.black.opacity(0.28), lineWidth: 1)
-                warperGrid(in: proxy.size)
-                    .stroke(Color.white.opacity(0.28), lineWidth: 1)
+                    .stroke(Color.white.opacity(0.72), lineWidth: 1.2)
 
                 ForEach(ColorGrade.WarpZone.allCases) { zone in
                     Circle()
