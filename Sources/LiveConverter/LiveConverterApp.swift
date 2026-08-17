@@ -9,7 +9,7 @@ struct LiveConverterApp: App {
     var body: some Scene {
         WindowGroup("video2live") {
             ContentView()
-                .frame(minWidth: 720, minHeight: 560)
+                .frame(minWidth: 860, minHeight: 760)
         }
         .windowResizability(.contentMinSize)
     }

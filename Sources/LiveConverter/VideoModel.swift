@@ -13,24 +13,38 @@ final class VideoModel: ObservableObject {
     @Published var status: String = L.t("Open a video file to begin.", "请打开一个视频文件开始。")
     @Published var isBusy: Bool = false
     @Published var coverPreview: NSImage?             // still frame that becomes the key photo
+    @Published private(set) var colorGrade: ColorGrade = .neutral
 
     /// User-chosen Live Photo length (seconds), persisted. Clamped to 1…10.
     @Published var targetDuration: Double = VideoModel.loadDuration() {
-        didSet { UserDefaults.standard.set(targetDuration, forKey: Self.durationKey) }
+        didSet {
+            let clamped = Self.clampedDuration(targetDuration)
+            if clamped != targetDuration {
+                targetDuration = clamped
+                return
+            }
+            UserDefaults.standard.set(targetDuration, forKey: Self.durationKey)
+        }
     }
     static let minDuration: Double = 1
     static let maxDuration: Double = 10
     private static let durationKey = "liveconverter.duration"
     static func loadDuration() -> Double {
         let v = UserDefaults.standard.object(forKey: durationKey) as? Double ?? kLivePhotoDuration
-        return Swift.min(Swift.max(v, minDuration), maxDuration)
+        return clampedDuration(v)
+    }
+
+    static func clampedDuration(_ value: Double) -> Double {
+        guard value.isFinite else { return kLivePhotoDuration }
+        return Swift.min(Swift.max(value, minDuration), maxDuration)
     }
 
     let player = AVPlayer()
 
     /// Length of the segment we extract. Clamped to the video length for short clips.
     var windowDuration: Double {
-        min(targetDuration, max(0, totalDuration))
+        guard totalDuration.isFinite else { return 0 }
+        return min(Self.clampedDuration(targetDuration), max(0, totalDuration))
     }
 
     /// Largest valid value for `selectionStart`.
@@ -52,6 +66,13 @@ final class VideoModel: ObservableObject {
         seekToCover()
     }
 
+    func setColorGrade(_ grade: ColorGrade) {
+        guard colorGrade != grade else { return }
+        colorGrade = grade
+        applyColorGradeToPlayer()
+        refreshCover()
+    }
+
     func load(url: URL) {
         isBusy = true
         status = L.t("Loading video…", "正在载入视频…")
@@ -70,6 +91,14 @@ final class VideoModel: ObservableObject {
                     return
                 }
                 let seconds = CMTimeGetSeconds(duration)
+                guard seconds.isFinite, seconds > 0 else {
+                    await MainActor.run {
+                        self.status = L.t("This file has an invalid duration.",
+                                          "该文件时长异常，无法转换。")
+                        self.isBusy = false
+                    }
+                    return
+                }
                 let thumbs = await Self.makeThumbnails(asset: asset, duration: seconds, count: 18)
                 await MainActor.run {
                     self.asset = asset
@@ -78,7 +107,7 @@ final class VideoModel: ObservableObject {
                     self.selectionStart = 0
                     self.coverFraction = 0.5
                     self.thumbnails = thumbs
-                    self.player.replaceCurrentItem(with: AVPlayerItem(asset: asset))
+                    self.player.replaceCurrentItem(with: self.playerItem(for: asset))
                     self.isBusy = false
                     self.status = L.t(
                         String(format: "Loaded: %@ (%.1f s). Drag the window below to pick the %.1f s to capture.",
@@ -100,7 +129,7 @@ final class VideoModel: ObservableObject {
 
     /// Change the Live Photo length; keep the selection window inside the video.
     func setTargetDuration(_ value: Double) {
-        targetDuration = min(max(value, Self.minDuration), Self.maxDuration)
+        targetDuration = Self.clampedDuration(value)
         selectionStart = min(selectionStart, maxStart)
         seekToCover()
     }
@@ -114,6 +143,17 @@ final class VideoModel: ObservableObject {
     func seekToCover() {
         let t = CMTime(seconds: coverTime, preferredTimescale: 600)
         player.seek(to: t, toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    private func playerItem(for asset: AVURLAsset) -> AVPlayerItem {
+        let item = AVPlayerItem(asset: asset)
+        item.videoComposition = colorGrade.videoComposition(for: asset)
+        return item
+    }
+
+    private func applyColorGradeToPlayer() {
+        guard let asset, let item = player.currentItem else { return }
+        item.videoComposition = colorGrade.videoComposition(for: asset)
     }
 
     private var boundaryObserver: Any?
@@ -134,14 +174,20 @@ final class VideoModel: ObservableObject {
         let start = CMTime(seconds: selectionStart, preferredTimescale: 600)
         let endTime = CMTime(seconds: selectionStart + windowDuration, preferredTimescale: 600)
         player.seek(to: start, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-            guard let self else { return }
-            self.player.play()
-            self.boundaryObserver = self.player.addBoundaryTimeObserver(
-                forTimes: [NSValue(time: endTime)], queue: .main) { [weak self] in
+            Task { @MainActor in
                 guard let self else { return }
-                self.player.pause()
-                self.clearBoundaryObserver()
-                self.seekToCover()
+                self.player.play()
+                self.boundaryObserver = self.player.addBoundaryTimeObserver(
+                    forTimes: [NSValue(time: endTime)],
+                    queue: .main
+                ) { [weak self] in
+                    Task { @MainActor in
+                        guard let self else { return }
+                        self.player.pause()
+                        self.clearBoundaryObserver()
+                        self.seekToCover()
+                    }
+                }
             }
         }
     }
@@ -150,16 +196,20 @@ final class VideoModel: ObservableObject {
     func refreshCover() {
         guard let asset else { return }
         let t = coverTime
+        let grade = colorGrade
         Task.detached {
-            let img = await Self.copyFrame(asset: asset, seconds: t)
-            await MainActor.run { self.coverPreview = img }
+            let img = await Self.copyFrame(asset: asset, seconds: t, colorGrade: grade)
+            await MainActor.run {
+                guard self.colorGrade == grade, abs(self.coverTime - t) < 0.05 else { return }
+                self.coverPreview = img
+            }
         }
     }
 
     // MARK: - Frame helpers
 
     nonisolated static func makeThumbnails(asset: AVURLAsset, duration: Double, count: Int) async -> [NSImage] {
-        guard duration > 0 else { return [] }
+        guard duration.isFinite, duration > 0 else { return [] }
         let gen = AVAssetImageGenerator(asset: asset)
         gen.appliesPreferredTrackTransform = true
         gen.requestedTimeToleranceBefore = .positiveInfinity
@@ -176,14 +226,22 @@ final class VideoModel: ObservableObject {
         return images
     }
 
-    nonisolated static func copyFrame(asset: AVURLAsset, seconds: Double) async -> NSImage? {
+    nonisolated static func copyFrame(asset: AVURLAsset,
+                                      seconds: Double,
+                                      colorGrade: ColorGrade = .neutral) async -> NSImage? {
         let gen = AVAssetImageGenerator(asset: asset)
         gen.appliesPreferredTrackTransform = true
         gen.requestedTimeToleranceBefore = .zero
         gen.requestedTimeToleranceAfter = .zero
         gen.maximumSize = CGSize(width: 480, height: 480)
         let time = CMTime(seconds: seconds, preferredTimescale: 600)
-        guard let cg = try? gen.copyCGImage(at: time, actualTime: nil) else { return nil }
-        return NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        let exact = try? gen.copyCGImage(at: time, actualTime: nil)
+        if exact == nil {
+            gen.requestedTimeToleranceBefore = .positiveInfinity
+            gen.requestedTimeToleranceAfter = .positiveInfinity
+        }
+        guard let cg = exact ?? (try? gen.copyCGImage(at: time, actualTime: nil)) else { return nil }
+        let rendered = colorGrade.renderedCGImage(from: cg) ?? cg
+        return NSImage(cgImage: rendered, size: NSSize(width: rendered.width, height: rendered.height))
     }
 }

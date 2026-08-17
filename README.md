@@ -19,8 +19,12 @@ dragging a window over the timeline; export a single `.pvt` package that you dra
 
 ### What it does
 - Open (or drag-and-drop) any video.
+- Or switch to **Three-up** mode, choose three videos, and stack them into one vertical
+  Live Photo.
 - Scrub a **draggable window** over a thumbnail timeline to choose the clip.
 - Live Photo length is **adjustable from 1 to 10 seconds** (default 3s; key photo = middle frame).
+- Apply common **color presets** (Original, Vivid, Warm, Cool, Film, B&W) and fine-tune
+  exposure, contrast, saturation, warmth, tint and vignette before export.
 - Exports a `.pvt` package — a bundle that shows up as **a single file** in Finder.
 - Drag the `.pvt` into **Photos**, **or AirDrop it to your iPhone** — either way it becomes
   one Live Photo. **No Photos-library permission needed.**
@@ -52,10 +56,21 @@ Or for development: `swift build -c release`.
 1. Click **Open Video…** or drag a video onto the window.
 2. Set the clip length with the **Length** slider (1–10 s), then drag the **yellow window**
    on the timeline to pick the clip (use **Preview selection** to check).
-3. Choose an export folder (defaults to `~/Pictures/video2live`).
-4. Click **Create & reveal in Finder**.
-5. In Finder, **drag the `.pvt` into Photos**, or **AirDrop it to your iPhone** → it becomes
+3. Use the **Color** panel for a preset or fine adjustment if needed.
+4. Choose an export folder (defaults to `~/Pictures/video2live`).
+5. Click **Create & reveal in Finder**.
+6. In Finder, **drag the `.pvt` into Photos**, or **AirDrop it to your iPhone** → it becomes
    a Live Photo.
+
+### Three-up mode
+1. Switch the mode selector from **Single video** to **Three-up**.
+2. Click **Open 3 Videos…**, or drag three videos into the window.
+3. Set the length with the same **Length** slider. The output is capped by the shortest
+   selected clip.
+4. Click a clip, then use the lower panel to set that clip's range, preview it, and choose
+   whether to keep its sound.
+5. Pick the global **key photo** time from the final combined video.
+6. Click **Create three-up & reveal** to export one vertical `.pvt` Live Photo.
 
 ### Language
 The UI is **bilingual** (English / Chinese). Use the **globe menu** at the top-right to pick
@@ -89,6 +104,7 @@ the recipient may need to **right-click → Open** the first time, or allow it u
 | `Sources/LiveConverter/ContentView.swift` | Main UI, open/generate/reveal flow |
 | `Sources/LiveConverter/TimelineView.swift` | Thumbnail timeline + draggable window |
 | `Sources/LiveConverter/VideoModel.swift` | Video loading, thumbnails, selection, preview |
+| `Sources/LiveConverter/ColorGrade.swift` | Color presets and Core Image filter pipeline |
 | `Sources/LiveConverter/LivePhotoGenerator.swift` | Trim, key frame, paired metadata, `.pvt` |
 | `Sources/LiveConverter/Localization.swift` | English/Chinese string helper |
 | `build.sh` / `make_dmg.sh` | Build the `.app` / build the `.dmg` |
@@ -102,8 +118,10 @@ the recipient may need to **right-click → Open** the first time, or allow it u
 
 ### 功能
 - 打开(或拖拽)任意视频。
+- 也可以切到**三拼**模式,选择三个视频,竖向拼成一张 Live Photo。
 - 在缩略图时间轴上拖动一个**窗口**来选取片段。
 - Live Photo 时长**可在 1–10 秒之间调节**(默认 3 秒;封面取片段中点那一帧)。
+- 支持常用**调色预设**(原片、鲜艳、暖色、冷色、胶片、黑白),也可微调曝光、对比度、饱和度、色温、色调和暗角。
 - 导出一个 `.pvt` 包 —— 在 Finder 里显示为**单个文件**。
 - 把 `.pvt` 拖进**「照片」**,或**直接 AirDrop 到 iPhone** —— 都会得到一张 Live Photo,**无需任何权限**。
 - 保留原视频的**拍摄日期、GPS 位置、设备型号**,竖屏视频**比例正确不变形**。
@@ -131,9 +149,18 @@ open video2live.app
 ### 使用步骤
 1. 点 **打开视频…** 或把视频拖进窗口。
 2. 用 **时长** 滑块设定片段长度(1–10 秒),再拖动时间轴上的**黄色窗口**选取片段(可点 **预览选中片段** 查看)。
-3. 选择导出文件夹(默认 `~/Pictures/video2live`)。
-4. 点 **生成并在访达中显示**。
-5. 在访达里把 **`.pvt` 拖进「照片」**,或**直接 AirDrop 到 iPhone** → 即成为一张 Live Photo。
+3. 如需调整画面,在 **调色** 面板选择预设或微调参数。
+4. 选择导出文件夹(默认 `~/Pictures/video2live`)。
+5. 点 **生成并在访达中显示**。
+6. 在访达里把 **`.pvt` 拖进「照片」**,或**直接 AirDrop 到 iPhone** → 即成为一张 Live Photo。
+
+### 三拼模式
+1. 把模式从 **单视频** 切到 **三拼**。
+2. 点 **打开 3 个视频…**,或把三个视频拖进窗口。
+3. 用同一个**时长**滑块设置输出长度;实际时长不会超过最短素材。
+4. 点击某个素材后,在下方面板设置这个素材的区间、预览片段,并选择是否保留它的声音。
+5. 从最终合成视频里选择全局**封面帧**时间。
+6. 点 **生成三拼并显示**,导出一个竖向 `.pvt` Live Photo。
 
 ### 语言
 界面**中英双语**。用右上角的**地球菜单**选择 **自动 / English / 中文**;「自动」跟随 macOS 系统语言。选择会被记住。
@@ -165,6 +192,7 @@ let kLivePhotoDuration: Double = 3.0   // 首次运行默认值，单位秒
 | `Sources/LiveConverter/ContentView.swift` | 主界面、打开/生成/显示流程 |
 | `Sources/LiveConverter/TimelineView.swift` | 缩略图时间轴 + 可拖动窗口 |
 | `Sources/LiveConverter/VideoModel.swift` | 视频加载、缩略图、选择、预览 |
+| `Sources/LiveConverter/ColorGrade.swift` | 调色预设与 Core Image 滤镜管线 |
 | `Sources/LiveConverter/LivePhotoGenerator.swift` | 截取、关键帧、配对元数据、`.pvt` |
 | `Sources/LiveConverter/Localization.swift` | 中英文字符串助手 |
 | `build.sh` / `make_dmg.sh` | 构建 `.app` / 构建 `.dmg` |

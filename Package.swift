@@ -16,6 +16,7 @@ let package = Package(
                 .linkedFramework("AVFoundation"),
                 .linkedFramework("Photos"),
                 .linkedFramework("CoreMedia"),
+                .linkedFramework("CoreImage"),
                 .linkedFramework("ImageIO"),
                 .linkedFramework("AppKit")
             ]
