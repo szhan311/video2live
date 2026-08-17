@@ -159,9 +159,10 @@ struct ContentView: View {
         HStack(alignment: .top, spacing: 14) {
             singleMediaPanel
                 .frame(maxWidth: .infinity, alignment: .top)
+                .layoutPriority(1)
 
             colorSidePanel
-                .frame(maxWidth: .infinity, alignment: .top)
+                .frame(minWidth: 340, idealWidth: 380, maxWidth: 410, alignment: .top)
         }
     }
 
@@ -212,29 +213,32 @@ struct ContentView: View {
         HStack(alignment: .top, spacing: 14) {
             threeUpMediaPanel
                 .frame(maxWidth: .infinity, alignment: .top)
+                .layoutPriority(1)
 
             colorSidePanel
-                .frame(maxWidth: .infinity, alignment: .top)
+                .frame(minWidth: 340, idealWidth: 380, maxWidth: 410, alignment: .top)
         }
     }
 
     private var threeUpMediaPanel: some View {
         VStack(spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
+                threeUpPreview
+                    .frame(maxWidth: .infinity, alignment: .top)
+
                 VStack(spacing: 8) {
                     ForEach(0..<3, id: \.self) { index in
                         threeUpSlot(index)
                     }
                 }
-                .frame(width: 172)
-
-                threeUpSelectedControls
-                    .frame(maxWidth: .infinity, alignment: .top)
+                .frame(width: 180)
             }
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
                     .strokeBorder(isDropTargeted ? Color.accentColor : Color.clear, lineWidth: 3)
             )
+
+            threeUpSelectedControls
 
             HStack {
                 Text(threeUpRangeLabel)
@@ -260,6 +264,33 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var threeUpPreview: some View {
+        let outputDuration = collageModel.outputDuration(targetDuration: model.targetDuration)
+
+        return ZStack {
+            VideoPlayer(player: collageModel.player)
+                .background(Color.black)
+
+            if collageModel.selectedIndex == nil {
+                VStack(spacing: 8) {
+                    Image(systemName: "film.stack")
+                        .font(.system(size: 34))
+                    Text(L.t("Choose or drop three videos, then click a clip on the right.",
+                             "选择或拖入三个视频后，点击右侧素材预览。"))
+                        .font(.callout)
+                }
+                .foregroundStyle(.secondary)
+            } else if outputDuration <= 0 {
+                Color.black.opacity(0.45)
+                Text(L.t("Selected range is too short", "选中区间太短"))
+                    .font(.caption)
+                    .foregroundStyle(.white)
+            }
+        }
+        .frame(height: 260)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     private func threeUpSlot(_ index: Int) -> some View {
@@ -364,19 +395,6 @@ struct ContentView: View {
                 let maxStart = collageModel.maxStart(for: index, targetDuration: model.targetDuration)
                 let canAdjustStart = maxStart.isFinite && maxStart > 0.000001
 
-                ZStack {
-                    VideoPlayer(player: collageModel.player)
-                        .background(Color.black)
-                    if outputDuration <= 0 {
-                        Color.black.opacity(0.45)
-                        Text(L.t("Selected range is too short", "选中区间太短"))
-                            .font(.caption)
-                            .foregroundStyle(.white)
-                    }
-                }
-                .frame(height: 154)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-
                 HStack(spacing: 8) {
                     Label(L.t("Clip \(index + 1)", "素材 \(index + 1)"),
                           systemImage: "film")
@@ -468,9 +486,12 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                     Spacer()
                 }
-                .frame(minHeight: 238)
+                .frame(minHeight: 108)
             }
         }
+        .padding(10)
+        .background(Color.gray.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func threeUpKeyPhotoControls(outputDuration: Double) -> some View {
@@ -698,7 +719,12 @@ struct ContentView: View {
             Text(title)
                 .font(.caption)
                 .frame(width: 48, alignment: .leading)
-            Slider(value: colorGradeBinding(keyPath), in: range, step: step)
+            ResettableSlider(value: colorGradeBinding(keyPath), range: range, step: step) {
+                var next = colorGrade
+                next[keyPath: keyPath] = defaultValue
+                setCustomColorGrade(next)
+            }
+            .frame(height: 20)
             Text(valueText)
                 .font(.caption)
                 .monospacedDigit()
@@ -706,12 +732,6 @@ struct ContentView: View {
                 .frame(width: 48, alignment: .trailing)
         }
         .frame(minHeight: 24)
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2) {
-            var next = colorGrade
-            next[keyPath: keyPath] = defaultValue
-            setCustomColorGrade(next)
-        }
         .help(L.t("Double-click to reset this adjustment.",
                   "双击恢复此项默认值。"))
     }
@@ -953,5 +973,74 @@ struct ContentView: View {
                                           "✅ 已导出三拼 .pvt 包到 \(dir.path)，访达里已选中它。")
             }
         }
+    }
+}
+
+private struct ResettableSlider: NSViewRepresentable {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let onReset: () -> Void
+
+    func makeNSView(context: Context) -> DoubleClickNSSlider {
+        let slider = DoubleClickNSSlider(value: normalized(value),
+                                         minValue: range.lowerBound,
+                                         maxValue: range.upperBound,
+                                         target: context.coordinator,
+                                         action: #selector(Coordinator.valueChanged(_:)))
+        slider.isContinuous = true
+        slider.onDoubleClick = {
+            context.coordinator.reset()
+        }
+        return slider
+    }
+
+    func updateNSView(_ nsView: DoubleClickNSSlider, context: Context) {
+        context.coordinator.parent = self
+        nsView.minValue = range.lowerBound
+        nsView.maxValue = range.upperBound
+        let nextValue = normalized(value)
+        if abs(nsView.doubleValue - nextValue) > 0.000001 {
+            nsView.doubleValue = nextValue
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    private func normalized(_ rawValue: Double) -> Double {
+        let clamped = min(max(rawValue, range.lowerBound), range.upperBound)
+        guard step > 0 else { return clamped }
+        let steps = ((clamped - range.lowerBound) / step).rounded()
+        return min(max(range.lowerBound + steps * step, range.lowerBound), range.upperBound)
+    }
+
+    final class Coordinator: NSObject {
+        var parent: ResettableSlider
+
+        init(parent: ResettableSlider) {
+            self.parent = parent
+        }
+
+        @objc func valueChanged(_ sender: NSSlider) {
+            parent.value = parent.normalized(sender.doubleValue)
+        }
+
+        func reset() {
+            parent.onReset()
+        }
+    }
+}
+
+private final class DoubleClickNSSlider: NSSlider {
+    var onDoubleClick: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount >= 2 {
+            onDoubleClick?()
+            return
+        }
+        super.mouseDown(with: event)
     }
 }
