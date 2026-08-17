@@ -26,6 +26,8 @@ dragging a window over the timeline; export a single `.pvt` package that you dra
 - Apply common **color presets** and pro-style controls: basic corrections, shadows /
   midtones / highlights color wheels, and a DaVinci-style hue/sat color warper before
   export.
+- For HDR source videos, writes the key photo HEIC with an **ISO/HDR gain map** on
+  supported macOS versions so the still frame can display as HDR too.
 - Exports a `.pvt` package — a bundle that shows up as **a single file** in Finder.
 - Drag the `.pvt` into **Photos**, **or AirDrop it to your iPhone** — either way it becomes
   one Live Photo. **No Photos-library permission needed.**
@@ -124,6 +126,7 @@ the recipient may need to **right-click → Open** the first time, or allow it u
 - 在缩略图时间轴上拖动一个**窗口**来选取片段。
 - Live Photo 时长**可在 1–10 秒之间调节**(默认 3 秒;封面取片段中点那一帧)。
 - 支持常用**调色预设**和偏专业的调色方式:基础校正、暗部/中间调/高光色轮,以及类似达芬奇的 hue/sat Color Warper。
+- HDR 源视频会在支持的 macOS 上自动把封面 HEIC 写成带 **ISO/HDR Gain Map** 的照片,让静态封面也能呈现 HDR 效果。
 - 导出一个 `.pvt` 包 —— 在 Finder 里显示为**单个文件**。
 - 把 `.pvt` 拖进**「照片」**,或**直接 AirDrop 到 iPhone** —— 都会得到一张 Live Photo,**无需任何权限**。
 - 保留原视频的**拍摄日期、GPS 位置、设备型号**,竖屏视频**比例正确不变形**。

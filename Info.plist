@@ -11,9 +11,9 @@
     <key>CFBundleIconFile</key>
     <string>AppIcon.icns</string>
     <key>CFBundleVersion</key>
-    <string>1.5</string>
+    <string>2.0</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.5</string>
+    <string>2.0</string>
     <key>CFBundleExecutable</key>
     <string>video2live</string>
     <key>CFBundleDocumentTypes</key>

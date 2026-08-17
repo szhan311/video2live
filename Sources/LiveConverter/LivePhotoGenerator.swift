@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import CoreMedia
+import CoreVideo
 import CoreImage
 import ImageIO
 import AppKit
@@ -50,6 +51,7 @@ enum LivePhotoGenerator {
     private static let contentID   = AVMetadataIdentifier("mdta/com.apple.quicktime.content.identifier")
     private static let int8Type    = "com.apple.metadata.datatype.int8"
     private static let utf8Type    = "com.apple.metadata.datatype.UTF-8"
+    private static let fallbackHDRHeadroom: Float = 2.5
 
     private final class WriteFailureBox {
         private let lock = NSLock()
@@ -390,26 +392,44 @@ enum LivePhotoGenerator {
                                    to url: URL) throws {
         try loadAssetKeys(asset, keys: ["tracks"])
 
-        let gen = AVAssetImageGenerator(asset: asset)
-        gen.appliesPreferredTrackTransform = true
-        gen.requestedTimeToleranceBefore = .zero
-        gen.requestedTimeToleranceAfter = .zero
-        let time = CMTime(seconds: seconds, preferredTimescale: 600)
-        let exact = try? gen.copyCGImage(at: time, actualTime: nil)
-        if exact == nil {
-            gen.requestedTimeToleranceBefore = .positiveInfinity
-            gen.requestedTimeToleranceAfter = .positiveInfinity
+        let props = stillProperties(assetID: assetID, meta: meta)
+        if #available(macOS 15.0, *) {
+            if writeHDRGainMapStillIfPossible(asset: asset,
+                                               seconds: seconds,
+                                               props: props,
+                                               colorGrade: colorGrade,
+                                               to: url) {
+                return
+            }
         }
-        let generatorImage = exact ?? (try? gen.copyCGImage(at: time, actualTime: nil))
+
+        let generatorImage = copyStillFrame(asset: asset, seconds: seconds)
         guard let cg = generatorImage ?? (try? fallbackStillImage(asset: asset, seconds: seconds)) else {
             throw GenError.stillExtract
         }
 
-        let type = (UTType.heic.identifier as CFString)
-        guard let dest = CGImageDestinationCreateWithURL(url as CFURL, type, 1, nil) else {
-            throw GenError.stillWrite
-        }
+        try writeStandardStill(cgImage: cg, props: props, colorGrade: colorGrade, to: url)
+    }
 
+    private static func copyStillFrame(asset: AVURLAsset,
+                                       seconds: Double,
+                                       configure: ((AVAssetImageGenerator) -> Void)? = nil) -> CGImage? {
+        let gen = AVAssetImageGenerator(asset: asset)
+        gen.appliesPreferredTrackTransform = true
+        configure?(gen)
+
+        gen.requestedTimeToleranceBefore = .zero
+        gen.requestedTimeToleranceAfter = .zero
+        let time = CMTime(seconds: seconds, preferredTimescale: 600)
+        let exact = try? gen.copyCGImage(at: time, actualTime: nil)
+        if exact != nil { return exact }
+
+        gen.requestedTimeToleranceBefore = .positiveInfinity
+        gen.requestedTimeToleranceAfter = .positiveInfinity
+        return try? gen.copyCGImage(at: time, actualTime: nil)
+    }
+
+    private static func stillProperties(assetID: String, meta: SourceMeta) -> [CFString: Any] {
         // Embed the asset identifier into the Apple maker note (key "17").
         var props: [CFString: Any] = [
             kCGImagePropertyMakerAppleDictionary: ["17": assetID]
@@ -433,11 +453,124 @@ enum LivePhotoGenerator {
             props[kCGImagePropertyGPSDictionary] = gps
         }
 
-        let outputImage = colorGrade.renderedCGImage(from: cg) ?? cg
+        return props
+    }
+
+    private static func writeStandardStill(cgImage: CGImage,
+                                           props: [CFString: Any],
+                                           colorGrade: ColorGrade,
+                                           to url: URL) throws {
+        let type = (UTType.heic.identifier as CFString)
+        guard let dest = CGImageDestinationCreateWithURL(url as CFURL, type, 1, nil) else {
+            throw GenError.stillWrite
+        }
+
+        let outputImage = colorGrade.renderedCGImage(from: cgImage) ?? cgImage
         CGImageDestinationAddImage(dest, outputImage, props as CFDictionary)
         guard CGImageDestinationFinalize(dest) else {
             throw GenError.stillWrite
         }
+    }
+
+    @available(macOS 15.0, *)
+    private static func writeHDRGainMapStillIfPossible(asset: AVURLAsset,
+                                                       seconds: Double,
+                                                       props: [CFString: Any],
+                                                       colorGrade: ColorGrade,
+                                                       to url: URL) -> Bool {
+        guard sourceContainsHDR(asset) else { return false }
+        guard let sdrCG = copyStillFrame(asset: asset, seconds: seconds, configure: { generator in
+            generator.dynamicRangePolicy = .forceSDR
+        }) ?? (try? fallbackStillImage(asset: asset, seconds: seconds)),
+              let hdrCG = copyStillFrame(asset: asset, seconds: seconds, configure: { generator in
+                  generator.dynamicRangePolicy = .matchSource
+              }) else {
+            return false
+        }
+
+        let context = CIContext()
+        let colorSpace = rgbColorSpace(for: sdrCG)
+        let ciProps = props as [AnyHashable: Any]
+        let sdrImage = gradedCIImage(from: sdrCG,
+                                     colorGrade: colorGrade,
+                                     toneMapHDRToSDR: true)
+            .settingProperties(ciProps)
+
+        var hdrImage = gradedCIImage(from: hdrCG,
+                                     colorGrade: colorGrade,
+                                     toneMapHDRToSDR: false)
+        if #available(macOS 16.0, *) {
+            let headroom = max(hdrCG.contentHeadroom, fallbackHDRHeadroom)
+            hdrImage = hdrImage.settingContentHeadroom(headroom)
+        }
+
+        do {
+            try context.writeHEIFRepresentation(of: sdrImage,
+                                                to: url,
+                                                format: .RGBA8,
+                                                colorSpace: colorSpace,
+                                                options: [
+                                                    .hdrImage: hdrImage,
+                                                    .hdrGainMapAsRGB: false
+                                                ])
+            guard heicContainsHDRGainMap(url) else {
+                try? FileManager.default.removeItem(at: url)
+                return false
+            }
+            return true
+        } catch {
+            try? FileManager.default.removeItem(at: url)
+            return false
+        }
+    }
+
+    private static func gradedCIImage(from cgImage: CGImage,
+                                      colorGrade: ColorGrade,
+                                      toneMapHDRToSDR: Bool) -> CIImage {
+        let source = CIImage(cgImage: cgImage, options: [.toneMapHDRtoSDR: toneMapHDRToSDR])
+        guard !colorGrade.isNeutral else {
+            return source.cropped(to: source.extent)
+        }
+        return colorGrade.makePipeline().apply(to: source).cropped(to: source.extent)
+    }
+
+    private static func rgbColorSpace(for image: CGImage) -> CGColorSpace {
+        if let colorSpace = image.colorSpace, colorSpace.model == .rgb {
+            return colorSpace
+        }
+        return CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+    }
+
+    private static func heicContainsHDRGainMap(_ url: URL) -> Bool {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return false }
+        if #available(macOS 15.0, *),
+           CGImageSourceCopyAuxiliaryDataInfoAtIndex(source, 0, kCGImageAuxiliaryDataTypeISOGainMap) != nil {
+            return true
+        }
+        return CGImageSourceCopyAuxiliaryDataInfoAtIndex(source, 0, kCGImageAuxiliaryDataTypeHDRGainMap) != nil
+    }
+
+    private static func sourceContainsHDR(_ asset: AVURLAsset) -> Bool {
+        guard let track = asset.tracks(withMediaType: .video).first else { return false }
+        if track.hasMediaCharacteristic(.containsHDRVideo) {
+            return true
+        }
+
+        for case let formatDescription as CMFormatDescription in track.formatDescriptions {
+            guard let extensions = CMFormatDescriptionGetExtensions(formatDescription) as? [CFString: Any],
+                  isHDRTransferFunction(extensions[kCVImageBufferTransferFunctionKey]) else {
+                continue
+            }
+            return true
+        }
+        return false
+    }
+
+    private static func isHDRTransferFunction(_ value: Any?) -> Bool {
+        guard let value else { return false }
+        let transfer = String(describing: value)
+        return transfer == String(describing: kCVImageBufferTransferFunction_ITU_R_2100_HLG)
+            || transfer == String(describing: kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ)
     }
 
     private static func fallbackStillImage(asset: AVURLAsset, seconds: Double) throws -> CGImage {
