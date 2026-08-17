@@ -751,6 +751,7 @@ enum LivePhotoGenerator {
         writer.add(vIn)
 
         let shouldApplyColorGrade = !colorGrade.isNeutral
+        let colorPipeline = shouldApplyColorGrade ? colorGrade.makePipeline() : nil
         let pixelAdaptor: AVAssetWriterInputPixelBufferAdaptor?
         let ciContext: CIContext?
         let renderColorSpace: CGColorSpace?
@@ -855,7 +856,8 @@ enum LivePhotoGenerator {
                     }
 
                     let sourceImage = CIImage(cvPixelBuffer: imageBuffer)
-                    let outputImage = colorGrade.applying(to: sourceImage).cropped(to: sourceImage.extent)
+                    let outputImage = (colorPipeline?.apply(to: sourceImage) ?? sourceImage)
+                        .cropped(to: sourceImage.extent)
                     ciContext.render(outputImage,
                                      to: outputBuffer,
                                      bounds: sourceImage.extent,

@@ -8,6 +8,13 @@ private enum WorkMode: String {
     case threeUp
 }
 
+private enum ColorSection: String {
+    case basics
+    case wheels
+    case curve
+    case warper
+}
+
 struct ContentView: View {
     @StateObject private var model = VideoModel()
     @StateObject private var collageModel = CollageModel()
@@ -17,6 +24,7 @@ struct ContentView: View {
     @State private var colorGrade = ColorGrade.neutral
     @State private var colorPreset = ColorGrade.Preset.original
     @State private var isColorExpanded = false
+    @State private var colorSection: ColorSection = .basics
     @AppStorage("liveconverter.outputDir") private var outputDirPath = ""
     @AppStorage(L.prefKey) private var langPref = "auto"
 
@@ -551,44 +559,17 @@ struct ContentView: View {
             }
 
             if isColorExpanded {
-                LazyVGrid(columns: colorGradeColumns, alignment: .leading, spacing: 8) {
-                    colorGradeControl(L.t("Exposure", "曝光"),
-                                      systemImage: "sun.max",
-                                      keyPath: \.exposure,
-                                      range: -1...1,
-                                      step: 0.05,
-                                      valueText: String(format: "%+.2f", colorGrade.exposure))
-                    colorGradeControl(L.t("Contrast", "对比度"),
-                                      systemImage: "circle.lefthalf.filled",
-                                      keyPath: \.contrast,
-                                      range: 0.5...1.8,
-                                      step: 0.05,
-                                      valueText: String(format: "%.0f%%", colorGrade.contrast * 100))
-                    colorGradeControl(L.t("Saturation", "饱和度"),
-                                      systemImage: "drop.fill",
-                                      keyPath: \.saturation,
-                                      range: 0...2,
-                                      step: 0.05,
-                                      valueText: String(format: "%.0f%%", colorGrade.saturation * 100))
-                    colorGradeControl(L.t("Warmth", "色温"),
-                                      systemImage: "thermometer.sun.fill",
-                                      keyPath: \.warmth,
-                                      range: -1...1,
-                                      step: 0.05,
-                                      valueText: String(format: "%+.0f", colorGrade.warmth * 100))
-                    colorGradeControl(L.t("Tint", "色调"),
-                                      systemImage: "eyedropper.halffull",
-                                      keyPath: \.tint,
-                                      range: -1...1,
-                                      step: 0.05,
-                                      valueText: String(format: "%+.0f", colorGrade.tint * 100))
-                    colorGradeControl(L.t("Vignette", "暗角"),
-                                      systemImage: "circle.dotted",
-                                      keyPath: \.vignette,
-                                      range: 0...0.8,
-                                      step: 0.05,
-                                      valueText: String(format: "%.0f%%", colorGrade.vignette * 100))
+                Picker(selection: $colorSection) {
+                    Text(L.t("Basics", "基础")).tag(ColorSection.basics)
+                    Text(L.t("Wheels", "色轮")).tag(ColorSection.wheels)
+                    Text(L.t("Curve", "曲线")).tag(ColorSection.curve)
+                    Text("Warper").tag(ColorSection.warper)
+                } label: {
+                    EmptyView()
                 }
+                .pickerStyle(.segmented)
+
+                activeColorControls
             }
         }
         .padding(10)
@@ -602,6 +583,82 @@ struct ContentView: View {
             GridItem(.flexible(minimum: 320), spacing: 12),
             GridItem(.flexible(minimum: 320), spacing: 12)
         ]
+    }
+
+    @ViewBuilder
+    private var activeColorControls: some View {
+        switch colorSection {
+        case .basics:
+            basicColorControls
+        case .wheels:
+            colorWheelControls
+        case .curve:
+            curveControls
+        case .warper:
+            warperControls
+        }
+    }
+
+    private var basicColorControls: some View {
+        LazyVGrid(columns: colorGradeColumns, alignment: .leading, spacing: 8) {
+            colorGradeControl(L.t("Exposure", "曝光"),
+                              systemImage: "sun.max",
+                              keyPath: \.exposure,
+                              range: -1...1,
+                              step: 0.05,
+                              valueText: String(format: "%+.2f", colorGrade.exposure))
+            colorGradeControl(L.t("Contrast", "对比度"),
+                              systemImage: "circle.lefthalf.filled",
+                              keyPath: \.contrast,
+                              range: 0.5...1.8,
+                              step: 0.05,
+                              valueText: String(format: "%.0f%%", colorGrade.contrast * 100))
+            colorGradeControl(L.t("Saturation", "饱和度"),
+                              systemImage: "drop.fill",
+                              keyPath: \.saturation,
+                              range: 0...2,
+                              step: 0.05,
+                              valueText: String(format: "%.0f%%", colorGrade.saturation * 100))
+            colorGradeControl(L.t("Warmth", "色温"),
+                              systemImage: "thermometer.sun.fill",
+                              keyPath: \.warmth,
+                              range: -1...1,
+                              step: 0.05,
+                              valueText: String(format: "%+.0f", colorGrade.warmth * 100))
+            colorGradeControl(L.t("Tint", "色调"),
+                              systemImage: "eyedropper.halffull",
+                              keyPath: \.tint,
+                              range: -1...1,
+                              step: 0.05,
+                              valueText: String(format: "%+.0f", colorGrade.tint * 100))
+            colorGradeControl(L.t("Vignette", "暗角"),
+                              systemImage: "circle.dotted",
+                              keyPath: \.vignette,
+                              range: 0...0.8,
+                              step: 0.05,
+                              valueText: String(format: "%.0f%%", colorGrade.vignette * 100))
+        }
+    }
+
+    private var colorWheelControls: some View {
+        HStack(alignment: .top, spacing: 14) {
+            ColorWheelPad(title: L.t("Shadows", "暗部"),
+                          wheel: colorWheelBinding(\.shadows))
+            ColorWheelPad(title: L.t("Midtones", "中间调"),
+                          wheel: colorWheelBinding(\.midtones))
+            ColorWheelPad(title: L.t("Highlights", "高光"),
+                          wheel: colorWheelBinding(\.highlights))
+        }
+    }
+
+    private var curveControls: some View {
+        ToneCurveEditor(curve: toneCurveBinding)
+            .frame(minHeight: 202)
+    }
+
+    private var warperControls: some View {
+        ColorWarperPad(warper: warperBinding)
+            .frame(minHeight: 210)
     }
 
     private var colorPresetSelection: Binding<ColorGrade.Preset> {
@@ -647,10 +704,48 @@ struct ContentView: View {
             set: { value in
                 var next = colorGrade
                 next[keyPath: keyPath] = value
-                colorGrade = next
-                colorPreset = .custom
+                setCustomColorGrade(next)
             }
         )
+    }
+
+    private func colorWheelBinding(_ keyPath: WritableKeyPath<ColorGrade, ColorGrade.ColorWheel>)
+    -> Binding<ColorGrade.ColorWheel> {
+        Binding(
+            get: { colorGrade[keyPath: keyPath] },
+            set: { value in
+                var next = colorGrade
+                next[keyPath: keyPath] = value
+                setCustomColorGrade(next)
+            }
+        )
+    }
+
+    private var toneCurveBinding: Binding<ColorGrade.ToneCurve> {
+        Binding(
+            get: { colorGrade.toneCurve },
+            set: { value in
+                var next = colorGrade
+                next.toneCurve = value
+                setCustomColorGrade(next)
+            }
+        )
+    }
+
+    private var warperBinding: Binding<ColorGrade.ColorWarper> {
+        Binding(
+            get: { colorGrade.warper },
+            set: { value in
+                var next = colorGrade
+                next.warper = value
+                setCustomColorGrade(next)
+            }
+        )
+    }
+
+    private func setCustomColorGrade(_ next: ColorGrade) {
+        colorGrade = next
+        colorPreset = .custom
     }
 
     private func resetColorGrade() {
