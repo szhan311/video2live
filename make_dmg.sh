@@ -29,7 +29,9 @@ hdiutil create \
     "$DMG" >/dev/null
 
 rm -rf "$STAGE"
+rm -rf "$APP_BUNDLE"
 
 echo ""
 echo "✅ 完成：$(pwd)/$DMG"
-echo "   分发：把 $DMG 发给别人；打开后把 $APP_BUNDLE 拖到 Applications 即可。"
+echo "   分发：把 ${DMG} 发给别人；打开后把 ${APP_BUNDLE} 拖到 Applications 即可。"
+echo "   已清理构建目录下的 ${APP_BUNDLE}，只保留 ${DMG}。"
