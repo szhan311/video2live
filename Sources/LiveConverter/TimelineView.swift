@@ -100,3 +100,79 @@ struct TimelineView: View {
         .opacity(model.thumbnails.isEmpty ? 0.3 : 1)
     }
 }
+
+/// A selected clip's trim strip for three-up mode. It mirrors the single-video yellow window,
+/// but writes into the selected collage clip instead of the single-video model.
+struct ClipRangeTimelineView: View {
+    let thumbnails: [NSImage]
+    let duration: Double
+    let selectionStart: Double
+    let windowDuration: Double
+    let maxStart: Double
+    let onStartChanged: (Double) -> Void
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let total = max(duration, 0.0001)
+            let windowFrac = min(windowDuration / total, 1.0)
+            let windowWidth = max(width * windowFrac, 24)
+            let usable = max(width - windowWidth, 0.0001)
+            let startFrac = maxStart > 0 ? selectionStart / maxStart : 0
+            let xOffset = usable * startFrac
+
+            ZStack(alignment: .leading) {
+                HStack(spacing: 0) {
+                    ForEach(Array(thumbnails.enumerated()), id: \.offset) { _, img in
+                        Image(nsImage: img)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: width / CGFloat(max(thumbnails.count, 1)),
+                                   height: geo.size.height)
+                            .clipped()
+                    }
+                }
+                .frame(width: width, height: geo.size.height)
+                .background(Color.black.opacity(0.85))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                if thumbnails.isEmpty {
+                    Image(systemName: "film")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.secondary)
+                        .frame(width: width, height: geo.size.height)
+                }
+
+                Color.black.opacity(0.5)
+                    .frame(width: xOffset)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                Color.black.opacity(0.5)
+                    .frame(width: max(width - xOffset - windowWidth, 0))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .offset(x: xOffset + windowWidth)
+
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.yellow, lineWidth: 3)
+                    .background(Color.yellow.opacity(0.12).clipShape(RoundedRectangle(cornerRadius: 8)))
+                    .frame(width: windowWidth, height: geo.size.height)
+                    .offset(x: xOffset)
+                    .overlay(
+                        Image(systemName: "arrow.left.and.right")
+                            .foregroundColor(.yellow)
+                            .offset(x: xOffset + windowWidth / 2 - width / 2),
+                        alignment: .center
+                    )
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                guard maxStart > 0, usable > 0 else { return }
+                                let proposedX = min(max(value.location.x - windowWidth / 2, 0), usable)
+                                onStartChanged((proposedX / usable) * maxStart)
+                            }
+                    )
+            }
+        }
+        .frame(height: 76)
+        .opacity(thumbnails.isEmpty ? 0.35 : 1)
+    }
+}

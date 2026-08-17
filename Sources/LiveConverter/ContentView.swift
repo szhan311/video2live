@@ -212,11 +212,10 @@ struct ContentView: View {
     private var threeUpEditor: some View {
         HStack(alignment: .top, spacing: 14) {
             threeUpMediaPanel
-                .frame(maxWidth: .infinity, alignment: .top)
-                .layoutPriority(1)
+                .frame(minWidth: 640, idealWidth: 760, maxWidth: 860, alignment: .top)
 
             colorSidePanel
-                .frame(minWidth: 340, idealWidth: 380, maxWidth: 410, alignment: .top)
+                .frame(minWidth: 430, idealWidth: 520, maxWidth: .infinity, alignment: .top)
         }
     }
 
@@ -224,7 +223,7 @@ struct ContentView: View {
         VStack(spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
                 threeUpPreview
-                    .frame(maxWidth: .infinity, alignment: .top)
+                    .frame(width: 460, alignment: .topLeading)
 
                 VStack(spacing: 8) {
                     ForEach(0..<3, id: \.self) { index in
@@ -289,7 +288,7 @@ struct ContentView: View {
                     .foregroundStyle(.white)
             }
         }
-        .frame(height: 260)
+        .frame(height: 258)
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
@@ -393,7 +392,6 @@ struct ContentView: View {
                 let clip = collageModel.clips[index]
                 let outputDuration = collageModel.outputDuration(targetDuration: model.targetDuration)
                 let maxStart = collageModel.maxStart(for: index, targetDuration: model.targetDuration)
-                let canAdjustStart = maxStart.isFinite && maxStart > 0.000001
 
                 HStack(spacing: 8) {
                     Label(L.t("Clip \(index + 1)", "素材 \(index + 1)"),
@@ -422,37 +420,29 @@ struct ContentView: View {
                               "导出三拼视频时是否保留这个素材的声音。"))
                 }
 
-                HStack(spacing: 8) {
-                    Text(L.t("Range", "区间"))
-                        .font(.caption)
-                        .frame(width: 42, alignment: .leading)
-                    if canAdjustStart {
-                        Slider(
-                            value: Binding(
-                                get: {
-                                    guard collageModel.clips.indices.contains(index) else { return 0 }
-                                    return safeSliderValue(collageModel.clips[index].startSeconds,
-                                                           upperBound: maxStart)
-                                },
-                                set: {
-                                    collageModel.setStart($0,
-                                                          for: index,
-                                                          targetDuration: model.targetDuration)
-                                }
-                            ),
-                            in: 0...maxStart
-                        )
-                    } else {
-                        Slider(value: .constant(0), in: 0...1)
-                            .disabled(true)
+                VStack(spacing: 6) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "selection.pin.in.out")
+                        Text(L.t("Range", "区间"))
+                            .font(.caption.weight(.semibold))
+                        Spacer()
+                        Text(String(format: "%.1f → %.1f s",
+                                    clip.startSeconds,
+                                    clip.startSeconds + outputDuration))
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
                     }
-                    Text(String(format: "%.1f → %.1f s",
-                                clip.startSeconds,
-                                clip.startSeconds + outputDuration))
-                        .font(.caption)
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                        .frame(width: 92, alignment: .trailing)
+                    ClipRangeTimelineView(thumbnails: clip.thumbnails,
+                                          duration: clip.duration,
+                                          selectionStart: clip.startSeconds,
+                                          windowDuration: outputDuration,
+                                          maxStart: maxStart) { value in
+                        collageModel.setStart(value,
+                                              for: index,
+                                              targetDuration: model.targetDuration)
+                    }
+                    .disabled(outputDuration <= 0)
                 }
 
                 HStack(spacing: 8) {
@@ -480,8 +470,8 @@ struct ContentView: View {
                     Image(systemName: "cursorarrow.click.2")
                         .font(.system(size: 24))
                         .foregroundStyle(.secondary)
-                    Text(L.t("Choose or drop videos, then click a clip above to edit it.",
-                             "选择或拖入视频后，点击左侧素材即可编辑。"))
+                    Text(L.t("Choose or drop videos, then click a clip on the right to edit it.",
+                             "选择或拖入视频后，点击右侧素材即可编辑。"))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     Spacer()

@@ -10,6 +10,7 @@ final class CollageModel: ObservableObject {
         let asset: AVURLAsset
         let duration: Double
         let thumbnail: NSImage?
+        let thumbnails: [NSImage]
         var startSeconds: Double = 0
         var audioEnabled: Bool = true
     }
@@ -209,11 +210,16 @@ final class CollageModel: ObservableObject {
                     guard !tracks.isEmpty else { continue }
                     let seconds = CMTimeGetSeconds(duration)
                     guard seconds.isFinite, seconds > 0 else { continue }
+                    let thumbs = await VideoModel.makeThumbnails(asset: asset, duration: seconds, count: 14)
                     let thumbTime = min(max(seconds / 2, 0), 1.5)
                     let thumbnail = await VideoModel.copyFrame(asset: asset,
                                                                seconds: thumbTime,
                                                                colorGrade: colorGrade)
-                    loaded.append(Clip(url: url, asset: asset, duration: seconds, thumbnail: thumbnail))
+                    loaded.append(Clip(url: url,
+                                       asset: asset,
+                                       duration: seconds,
+                                       thumbnail: thumbnail,
+                                       thumbnails: thumbs))
                 } catch {
                     status = L.t("Skipped \(url.lastPathComponent): \(error.localizedDescription)",
                                  "已跳过 \(url.lastPathComponent)：\(error.localizedDescription)")
