@@ -27,6 +27,12 @@ struct ContentView: View {
     @AppStorage("liveconverter.outputDir") private var outputDirPath = ""
     @AppStorage(L.prefKey) private var langPref = "auto"
 
+    private let editorMaxWidth: CGFloat = 1620
+    private let colorPanelWidth: CGFloat = 520
+    private let singleMediaMaxWidth: CGFloat = 980
+    private let threeUpMediaMaxWidth: CGFloat = 1080
+    private let threeUpSlotWidth: CGFloat = 190
+
     /// Where the paired HEIC + MOV are written. Defaults to ~/Pictures/LiveConverter.
     private var outputDir: URL {
         if !outputDirPath.isEmpty {
@@ -158,12 +164,19 @@ struct ContentView: View {
     private var singleEditor: some View {
         HStack(alignment: .top, spacing: 14) {
             singleMediaPanel
-                .frame(maxWidth: .infinity, alignment: .top)
+                .frame(minWidth: 680,
+                       idealWidth: singleMediaMaxWidth,
+                       maxWidth: singleMediaMaxWidth,
+                       alignment: .top)
                 .layoutPriority(1)
 
             colorSidePanel
-                .frame(minWidth: 340, idealWidth: 380, maxWidth: 410, alignment: .top)
+                .frame(minWidth: 430,
+                       idealWidth: colorPanelWidth,
+                       maxWidth: colorPanelWidth,
+                       alignment: .top)
         }
+        .frame(maxWidth: editorMaxWidth, alignment: .center)
     }
 
     private var singleMediaPanel: some View {
@@ -182,7 +195,9 @@ struct ContentView: View {
                     }
                 }
             }
-            .frame(height: 300)
+            .aspectRatio(16.0 / 9.0, contentMode: .fit)
+            .frame(maxWidth: 900)
+            .frame(maxWidth: .infinity, alignment: .center)
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
@@ -212,25 +227,33 @@ struct ContentView: View {
     private var threeUpEditor: some View {
         HStack(alignment: .top, spacing: 14) {
             threeUpMediaPanel
-                .frame(minWidth: 640, idealWidth: 760, maxWidth: 860, alignment: .top)
+                .frame(minWidth: 820,
+                       idealWidth: threeUpMediaMaxWidth,
+                       maxWidth: threeUpMediaMaxWidth,
+                       alignment: .top)
+                .layoutPriority(1)
 
             colorSidePanel
-                .frame(minWidth: 430, idealWidth: 520, maxWidth: .infinity, alignment: .top)
+                .frame(minWidth: 430,
+                       idealWidth: colorPanelWidth,
+                       maxWidth: colorPanelWidth,
+                       alignment: .top)
         }
+        .frame(maxWidth: editorMaxWidth, alignment: .center)
     }
 
     private var threeUpMediaPanel: some View {
         VStack(spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
                 threeUpPreview
-                    .frame(width: 460, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
 
                 VStack(spacing: 8) {
                     ForEach(0..<3, id: \.self) { index in
                         threeUpSlot(index)
                     }
                 }
-                .frame(width: 180)
+                .frame(width: threeUpSlotWidth)
             }
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
@@ -288,7 +311,7 @@ struct ContentView: View {
                     .foregroundStyle(.white)
             }
         }
-        .frame(height: 258)
+        .aspectRatio(16.0 / 9.0, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
