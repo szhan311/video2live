@@ -6,6 +6,7 @@ import CoreImage
 import ImageIO
 import AppKit
 import UniformTypeIdentifiers
+import Vision
 
 /// Produces a paired still image (HEIC) + movie (MOV) that together form a Live Photo.
 /// Both files share a content identifier; the movie carries a "still-image-time" marker.
@@ -52,6 +53,120 @@ enum LivePhotoGenerator {
     private static let int8Type    = "com.apple.metadata.datatype.int8"
     private static let utf8Type    = "com.apple.metadata.datatype.UTF-8"
     private static let fallbackHDRHeadroom: Float = 2.5
+
+    private struct VideoColorProfile {
+        let colorProperties: [String: String]
+        let renderColorSpace: CGColorSpace
+        let allowsWideColor: Bool
+
+        static let rec709 = VideoColorProfile(
+            colorProperties: [
+                AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
+                AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+                AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2
+            ],
+            renderColorSpace: CGColorSpace(name: CGColorSpace.itur_709) ?? CGColorSpaceCreateDeviceRGB(),
+            allowsWideColor: false
+        )
+
+        static let displayP3 = VideoColorProfile(
+            colorProperties: [
+                AVVideoColorPrimariesKey: AVVideoColorPrimaries_P3_D65,
+                AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+                AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2
+            ],
+            renderColorSpace: CGColorSpace(name: CGColorSpace.displayP3) ?? CGColorSpaceCreateDeviceRGB(),
+            allowsWideColor: true
+        )
+    }
+
+    private struct StabilizationTransform {
+        let time: Double
+        let x: CGFloat
+        let y: CGFloat
+    }
+
+    private struct StabilizationPlan {
+        let transforms: [StabilizationTransform]
+        let cropScale: CGFloat
+        let rawSize: CGSize
+        let orientation: CGImagePropertyOrientation
+
+        static let off = StabilizationPlan(transforms: [],
+                                           cropScale: 1,
+                                           rawSize: .zero,
+                                           orientation: .up)
+
+        var isActive: Bool {
+            !transforms.isEmpty && cropScale > 1
+        }
+
+        func videoTransform(at seconds: Double, extent: CGRect) -> CGAffineTransform {
+            let correction = correction(at: seconds)
+            return cropTransform(correction: correction, extent: extent)
+        }
+
+        func stillTransform(at seconds: Double, extent: CGRect) -> CGAffineTransform {
+            let correction = displayCorrection(fromRaw: correction(at: seconds),
+                                               displaySize: extent.size)
+            return cropTransform(correction: correction, extent: extent)
+        }
+
+        private func correction(at seconds: Double) -> CGPoint {
+            guard isActive else { return .zero }
+            guard let first = transforms.first else { return .zero }
+            if seconds <= first.time { return CGPoint(x: first.x, y: first.y) }
+            guard let last = transforms.last else { return .zero }
+            if seconds >= last.time { return CGPoint(x: last.x, y: last.y) }
+
+            var lower = 0
+            var upper = transforms.count - 1
+            while upper - lower > 1 {
+                let mid = (lower + upper) / 2
+                if transforms[mid].time <= seconds {
+                    lower = mid
+                } else {
+                    upper = mid
+                }
+            }
+
+            let a = transforms[lower]
+            let b = transforms[upper]
+            let span = max(0.0001, b.time - a.time)
+            let t = CGFloat((seconds - a.time) / span)
+            return CGPoint(x: a.x + (b.x - a.x) * t,
+                           y: a.y + (b.y - a.y) * t)
+        }
+
+        private func cropTransform(correction: CGPoint, extent: CGRect) -> CGAffineTransform {
+            guard isActive else { return .identity }
+            let center = CGPoint(x: extent.midX, y: extent.midY)
+            return CGAffineTransform(a: cropScale,
+                                     b: 0,
+                                     c: 0,
+                                     d: cropScale,
+                                     tx: correction.x + center.x * (1 - cropScale),
+                                     ty: correction.y + center.y * (1 - cropScale))
+        }
+
+        private func displayCorrection(fromRaw correction: CGPoint, displaySize: CGSize) -> CGPoint {
+            guard rawSize.width > 0, rawSize.height > 0 else { return correction }
+            switch orientation {
+            case .right:
+                return CGPoint(x: -correction.y * displaySize.width / rawSize.height,
+                               y: correction.x * displaySize.height / rawSize.width)
+            case .left:
+                return CGPoint(x: correction.y * displaySize.width / rawSize.height,
+                               y: -correction.x * displaySize.height / rawSize.width)
+            case .down:
+                return CGPoint(x: -correction.x * displaySize.width / rawSize.width,
+                               y: -correction.y * displaySize.height / rawSize.height)
+            default:
+                return CGPoint(x: correction.x * displaySize.width / rawSize.width,
+                               y: correction.y * displaySize.height / rawSize.height)
+            }
+        }
+    }
 
     private final class WriteFailureBox {
         private let lock = NSLock()
@@ -207,6 +322,7 @@ enum LivePhotoGenerator {
                          durationSeconds: Double,
                          coverSeconds: Double,
                          colorGrade: ColorGrade = .neutral,
+                         stabilization: VideoStabilization = .off,
                          outputDirectory: URL,
                          format: Format,
                          completion: @escaping (Result<Output, Error>) -> Void) {
@@ -227,11 +343,16 @@ enum LivePhotoGenerator {
                 defer { try? fileManager.removeItem(at: workDir) }
 
                 let meta = extractMeta(from: asset)
+                let stabilizationPlan = makeStabilizationPlan(asset: asset,
+                                                              startSeconds: startSeconds,
+                                                              durationSeconds: durationSeconds,
+                                                              settings: stabilization)
                 try writeStill(asset: asset,
                                seconds: coverSeconds,
                                assetID: assetID,
                                meta: meta,
                                colorGrade: colorGrade,
+                               stabilizationPlan: stabilizationPlan,
                                to: stagedPhotoURL)
                 try writeVideo(asset: asset,
                                startSeconds: startSeconds,
@@ -240,6 +361,7 @@ enum LivePhotoGenerator {
                                assetID: assetID,
                                meta: meta,
                                colorGrade: colorGrade,
+                               stabilizationPlan: stabilizationPlan,
                                to: stagedVideoURL)
 
                 let out: Output
@@ -277,6 +399,7 @@ enum LivePhotoGenerator {
                                 coverSeconds: Double,
                                 audioEnabled: [Bool],
                                 colorGrade: ColorGrade = .neutral,
+                                stabilization: VideoStabilization = .off,
                                 outputDirectory: URL,
                                 format: Format,
                                 completion: @escaping (Result<Output, Error>) -> Void) {
@@ -305,12 +428,17 @@ enum LivePhotoGenerator {
                 let collageAsset = AVURLAsset(url: collageURL)
                 let meta = assets.first.map { extractMeta(from: $0) } ?? SourceMeta()
                 let cover = min(max(coverSeconds, 0), actualDuration)
+                let stabilizationPlan = makeStabilizationPlan(asset: collageAsset,
+                                                              startSeconds: 0,
+                                                              durationSeconds: actualDuration,
+                                                              settings: stabilization)
 
                 try writeStill(asset: collageAsset,
                                seconds: cover,
                                assetID: assetID,
                                meta: meta,
                                colorGrade: colorGrade,
+                               stabilizationPlan: stabilizationPlan,
                                to: stagedPhotoURL)
                 try writeVideo(asset: collageAsset,
                                startSeconds: 0,
@@ -319,6 +447,7 @@ enum LivePhotoGenerator {
                                assetID: assetID,
                                meta: meta,
                                colorGrade: colorGrade,
+                               stabilizationPlan: stabilizationPlan,
                                to: stagedVideoURL)
 
                 let out: Output
@@ -389,6 +518,7 @@ enum LivePhotoGenerator {
                                    assetID: String,
                                    meta: SourceMeta,
                                    colorGrade: ColorGrade,
+                                   stabilizationPlan: StabilizationPlan,
                                    to url: URL) throws {
         try loadAssetKeys(asset, keys: ["tracks"])
 
@@ -398,6 +528,7 @@ enum LivePhotoGenerator {
                                                seconds: seconds,
                                                props: props,
                                                colorGrade: colorGrade,
+                                               stabilizationPlan: stabilizationPlan,
                                                to: url) {
                 return
             }
@@ -408,7 +539,16 @@ enum LivePhotoGenerator {
             throw GenError.stillExtract
         }
 
-        try writeStandardStill(cgImage: cg, props: props, colorGrade: colorGrade, to: url)
+        let outputColorSpace = sourceContainsHDR(asset)
+            ? VideoColorProfile.rec709.renderColorSpace
+            : rgbColorSpace(for: cg)
+        try writeStandardStill(cgImage: cg,
+                               props: props,
+                               colorGrade: colorGrade,
+                               stabilizationPlan: stabilizationPlan,
+                               outputColorSpace: outputColorSpace,
+                               seconds: seconds,
+                               to: url)
     }
 
     private static func copyStillFrame(asset: AVURLAsset,
@@ -459,13 +599,21 @@ enum LivePhotoGenerator {
     private static func writeStandardStill(cgImage: CGImage,
                                            props: [CFString: Any],
                                            colorGrade: ColorGrade,
+                                           stabilizationPlan: StabilizationPlan,
+                                           outputColorSpace: CGColorSpace,
+                                           seconds: Double,
                                            to url: URL) throws {
         let type = (UTType.heic.identifier as CFString)
         guard let dest = CGImageDestinationCreateWithURL(url as CFURL, type, 1, nil) else {
             throw GenError.stillWrite
         }
 
-        let outputImage = colorGrade.renderedCGImage(from: cgImage) ?? cgImage
+        let outputImage = renderedStillCGImage(from: cgImage,
+                                               colorGrade: colorGrade,
+                                               stabilizationPlan: stabilizationPlan,
+                                               outputColorSpace: outputColorSpace,
+                                               seconds: seconds,
+                                               toneMapHDRToSDR: true) ?? cgImage
         CGImageDestinationAddImage(dest, outputImage, props as CFDictionary)
         guard CGImageDestinationFinalize(dest) else {
             throw GenError.stillWrite
@@ -477,6 +625,7 @@ enum LivePhotoGenerator {
                                                        seconds: Double,
                                                        props: [CFString: Any],
                                                        colorGrade: ColorGrade,
+                                                       stabilizationPlan: StabilizationPlan,
                                                        to url: URL) -> Bool {
         guard sourceContainsHDR(asset) else { return false }
         guard let sdrCG = copyStillFrame(asset: asset, seconds: seconds, configure: { generator in
@@ -493,11 +642,15 @@ enum LivePhotoGenerator {
         let ciProps = props as [AnyHashable: Any]
         let sdrImage = gradedCIImage(from: sdrCG,
                                      colorGrade: colorGrade,
+                                     stabilizationPlan: stabilizationPlan,
+                                     seconds: seconds,
                                      toneMapHDRToSDR: true)
             .settingProperties(ciProps)
 
         var hdrImage = gradedCIImage(from: hdrCG,
                                      colorGrade: colorGrade,
+                                     stabilizationPlan: stabilizationPlan,
+                                     seconds: seconds,
                                      toneMapHDRToSDR: false)
         if #available(macOS 16.0, *) {
             let headroom = max(hdrCG.contentHeadroom, fallbackHDRHeadroom)
@@ -526,12 +679,19 @@ enum LivePhotoGenerator {
 
     private static func gradedCIImage(from cgImage: CGImage,
                                       colorGrade: ColorGrade,
+                                      stabilizationPlan: StabilizationPlan,
+                                      seconds: Double,
                                       toneMapHDRToSDR: Bool) -> CIImage {
-        let source = CIImage(cgImage: cgImage, options: [.toneMapHDRtoSDR: toneMapHDRToSDR])
-        guard !colorGrade.isNeutral else {
-            return source.cropped(to: source.extent)
+        var output = CIImage(cgImage: cgImage, options: [.toneMapHDRtoSDR: toneMapHDRToSDR])
+        if !colorGrade.isNeutral {
+            output = colorGrade.makePipeline().apply(to: output).cropped(to: output.extent)
         }
-        return colorGrade.makePipeline().apply(to: source).cropped(to: source.extent)
+        if stabilizationPlan.isActive {
+            output = output.transformed(by: stabilizationPlan.stillTransform(at: seconds,
+                                                                             extent: output.extent))
+                .cropped(to: output.extent)
+        }
+        return output
     }
 
     private static func rgbColorSpace(for image: CGImage) -> CGColorSpace {
@@ -566,11 +726,333 @@ enum LivePhotoGenerator {
         return false
     }
 
+    private static func outputVideoColorProfile(for track: AVAssetTrack) -> VideoColorProfile {
+        let primaries = firstFormatExtension(kCVImageBufferColorPrimariesKey, from: track)
+        let transfer = firstFormatExtension(kCVImageBufferTransferFunctionKey, from: track)
+
+        if isHDRTransferFunction(transfer) {
+            return .rec709
+        }
+
+        if matches(primaries, kCVImageBufferColorPrimaries_P3_D65) {
+            return .displayP3
+        }
+
+        return .rec709
+    }
+
+    private static func firstFormatExtension(_ key: CFString, from track: AVAssetTrack) -> String? {
+        for case let formatDescription as CMFormatDescription in track.formatDescriptions {
+            guard let extensions = CMFormatDescriptionGetExtensions(formatDescription) as? [CFString: Any],
+                  let value = extensions[key] else {
+                continue
+            }
+            return String(describing: value)
+        }
+        return nil
+    }
+
     private static func isHDRTransferFunction(_ value: Any?) -> Bool {
         guard let value else { return false }
         let transfer = String(describing: value)
         return transfer == String(describing: kCVImageBufferTransferFunction_ITU_R_2100_HLG)
             || transfer == String(describing: kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ)
+    }
+
+    private static func matches(_ value: String?, _ constant: CFString) -> Bool {
+        value == String(describing: constant)
+    }
+
+    private static func renderedStillCGImage(from cgImage: CGImage,
+                                             colorGrade: ColorGrade,
+                                             stabilizationPlan: StabilizationPlan,
+                                             outputColorSpace: CGColorSpace,
+                                             seconds: Double,
+                                             toneMapHDRToSDR: Bool) -> CGImage? {
+        let image = gradedCIImage(from: cgImage,
+                                  colorGrade: colorGrade,
+                                  stabilizationPlan: stabilizationPlan,
+                                  seconds: seconds,
+                                  toneMapHDRToSDR: toneMapHDRToSDR)
+        let context = CIContext(options: [
+            .workingColorSpace: outputColorSpace,
+            .outputColorSpace: outputColorSpace
+        ])
+        return context.createCGImage(image,
+                                     from: image.extent.integral,
+                                     format: .RGBA8,
+                                     colorSpace: outputColorSpace)
+    }
+
+    // MARK: - Digital stabilization
+
+    private struct RegistrationFrame {
+        let image: CGImage
+        let luma: [UInt8]
+        let width: Int
+        let height: Int
+        let scale: CGFloat
+        let rawSize: CGSize
+    }
+
+    private static func makeStabilizationPlan(asset: AVURLAsset,
+                                              startSeconds: Double,
+                                              durationSeconds: Double,
+                                              settings: VideoStabilization) -> StabilizationPlan {
+        guard settings.isActive else { return .off }
+        do {
+            return try analyzeStabilization(asset: asset,
+                                            startSeconds: startSeconds,
+                                            durationSeconds: durationSeconds,
+                                            settings: settings)
+        } catch {
+            return .off
+        }
+    }
+
+    private static func analyzeStabilization(asset: AVURLAsset,
+                                             startSeconds: Double,
+                                             durationSeconds: Double,
+                                             settings: VideoStabilization) throws -> StabilizationPlan {
+        try loadAssetKeys(asset, keys: ["tracks", "duration"])
+        guard let track = asset.tracks(withMediaType: .video).first else { return .off }
+
+        let reader: AVAssetReader
+        do { reader = try AVAssetReader(asset: asset) }
+        catch { return .off }
+
+        let timescale: CMTimeScale = 600
+        reader.timeRange = CMTimeRange(start: CMTime(seconds: startSeconds, preferredTimescale: timescale),
+                                       duration: CMTime(seconds: durationSeconds, preferredTimescale: timescale))
+        let output = AVAssetReaderTrackOutput(
+            track: track,
+            outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+        output.alwaysCopiesSampleData = false
+        guard reader.canAdd(output) else { return .off }
+        reader.add(output)
+        guard reader.startReading() else { return .off }
+
+        let context = CIContext()
+        var previousFrame: RegistrationFrame?
+        var rawSize = CGSize(width: abs(track.naturalSize.width), height: abs(track.naturalSize.height))
+        var times: [Double] = []
+        var path: [CGPoint] = []
+        var currentPath = CGPoint.zero
+        var acceptedMeasurements = 0
+        var rejectedMeasurements = 0
+
+        while let sample = output.copyNextSampleBuffer() {
+            guard let buffer = CMSampleBufferGetImageBuffer(sample),
+                  let frame = registrationFrame(from: buffer, context: context) else {
+                continue
+            }
+
+            rawSize = frame.rawSize
+            let sampleSeconds = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample))
+            guard sampleSeconds.isFinite else { continue }
+
+            if let previousFrame,
+               let alignment = translationFromCurrentFrame(frame, toPreviousFrame: previousFrame) {
+                currentPath.x -= alignment.x / max(frame.scale, 0.0001)
+                currentPath.y -= alignment.y / max(frame.scale, 0.0001)
+                acceptedMeasurements += 1
+            } else if previousFrame != nil {
+                rejectedMeasurements += 1
+            }
+
+            times.append(sampleSeconds)
+            path.append(currentPath)
+            previousFrame = frame
+        }
+
+        guard reader.status != .failed, times.count > 2, path.count == times.count else {
+            return .off
+        }
+        let measuredFrames = acceptedMeasurements + rejectedMeasurements
+        guard measuredFrames > 0,
+              Double(acceptedMeasurements) / Double(measuredFrames) >= 0.45 else {
+            return .off
+        }
+
+        let smoothingRadius = settings.strength.smoothingRadius
+        let smoothed = triangularMovingAverage(path, radius: smoothingRadius)
+        let motionLimit = min(rawSize.width, rawSize.height) * settings.strength.maxCorrectionRatio
+        let cropLimitX = rawSize.width * (settings.strength.cropScale - 1) * 0.46
+        let cropLimitY = rawSize.height * (settings.strength.cropScale - 1) * 0.46
+        let maxCorrectionX = min(motionLimit, cropLimitX)
+        let maxCorrectionY = min(motionLimit, cropLimitY)
+        let deadband = max(1.0, min(rawSize.width, rawSize.height) * 0.001)
+        let correctionRadius = max(2, smoothingRadius / 3)
+        var transforms: [StabilizationTransform] = []
+        var largestCorrection: CGFloat = 0
+        var corrections: [CGPoint] = []
+
+        for index in path.indices {
+            var correction = CGPoint(x: (smoothed[index].x - path[index].x) * settings.strength.correctionScale,
+                                     y: (smoothed[index].y - path[index].y) * settings.strength.correctionScale)
+            correction = limited(correction, maxX: maxCorrectionX, maxY: maxCorrectionY)
+            if hypot(correction.x, correction.y) < deadband {
+                correction = .zero
+            }
+            corrections.append(correction)
+        }
+
+        corrections = triangularMovingAverage(corrections, radius: correctionRadius)
+        for index in corrections.indices {
+            let correction = limited(corrections[index], maxX: maxCorrectionX, maxY: maxCorrectionY)
+            largestCorrection = max(largestCorrection, hypot(correction.x, correction.y))
+            transforms.append(StabilizationTransform(time: times[index],
+                                                     x: correction.x,
+                                                     y: correction.y))
+        }
+
+        guard largestCorrection >= deadband else { return .off }
+        return StabilizationPlan(transforms: transforms,
+                                 cropScale: settings.strength.cropScale,
+                                 rawSize: rawSize,
+                                 orientation: imageOrientation(for: track.preferredTransform))
+    }
+
+    private static func registrationFrame(from pixelBuffer: CVPixelBuffer,
+                                          context: CIContext) -> RegistrationFrame? {
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        guard width > 0, height > 0 else { return nil }
+
+        let maxDimension: CGFloat = 320
+        let rawSize = CGSize(width: width, height: height)
+        let scale = min(1, maxDimension / max(rawSize.width, rawSize.height))
+        let source = CIImage(cvPixelBuffer: pixelBuffer)
+        let image = scale < 1
+            ? source.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+            : source
+        guard let cgImage = context.createCGImage(image, from: image.extent.integral) else {
+            return nil
+        }
+        guard let luma = lumaPixels(from: cgImage) else { return nil }
+        return RegistrationFrame(image: cgImage,
+                                 luma: luma,
+                                 width: cgImage.width,
+                                 height: cgImage.height,
+                                 scale: scale,
+                                 rawSize: rawSize)
+    }
+
+    private static func translationFromCurrentFrame(_ current: RegistrationFrame,
+                                                    toPreviousFrame previous: RegistrationFrame) -> CGPoint? {
+        let request = VNTranslationalImageRegistrationRequest(targetedCGImage: current.image,
+                                                              options: [:])
+        let handler = VNImageRequestHandler(cgImage: previous.image, options: [:])
+        do {
+            try handler.perform([request])
+            guard let transform = request.results?.first?.alignmentTransform,
+                  transform.tx.isFinite,
+                  transform.ty.isFinite else {
+                return nil
+            }
+            let shift = CGPoint(x: transform.tx, y: transform.ty)
+            let maxShift = CGFloat(min(current.width, current.height)) * 0.07
+            guard abs(shift.x) <= maxShift, abs(shift.y) <= maxShift else {
+                return nil
+            }
+
+            let stillDifference = frameDifference(current, previous: previous, applying: .zero)
+            let alignedDifference = frameDifference(current, previous: previous, applying: shift)
+            guard alignedDifference.isFinite,
+                  stillDifference.isFinite,
+                  alignedDifference <= stillDifference * 0.96 || hypot(shift.x, shift.y) < 0.75 else {
+                return nil
+            }
+
+            return shift
+        } catch {
+            return nil
+        }
+    }
+
+    private static func lumaPixels(from image: CGImage) -> [UInt8]? {
+        let width = image.width
+        let height = image.height
+        guard width > 0, height > 0 else { return nil }
+
+        var pixels = [UInt8](repeating: 0, count: width * height)
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        let bitmapInfo = CGImageAlphaInfo.none.rawValue
+        let drew = pixels.withUnsafeMutableBytes { rawBuffer -> Bool in
+            guard let base = rawBuffer.baseAddress,
+                  let context = CGContext(data: base,
+                                          width: width,
+                                          height: height,
+                                          bitsPerComponent: 8,
+                                          bytesPerRow: width,
+                                          space: colorSpace,
+                                          bitmapInfo: bitmapInfo) else {
+                return false
+            }
+            context.interpolationQuality = .low
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        return drew ? pixels : nil
+    }
+
+    private static func frameDifference(_ current: RegistrationFrame,
+                                        previous: RegistrationFrame,
+                                        applying translation: CGPoint) -> CGFloat {
+        let width = min(current.width, previous.width)
+        let height = min(current.height, previous.height)
+        guard width > 12, height > 12 else { return .greatestFiniteMagnitude }
+
+        let dx = Int(round(translation.x))
+        let dy = Int(round(translation.y))
+        let step = 3
+        let minX = max(0, dx)
+        let maxX = min(width - 1, width - 1 + dx)
+        let minY = max(0, dy)
+        let maxY = min(height - 1, height - 1 + dy)
+        guard maxX > minX + step, maxY > minY + step else {
+            return .greatestFiniteMagnitude
+        }
+
+        var total = 0
+        var count = 0
+        for y in stride(from: minY, through: maxY, by: step) {
+            let currentY = y - dy
+            guard currentY >= 0, currentY < current.height, y < previous.height else { continue }
+            for x in stride(from: minX, through: maxX, by: step) {
+                let currentX = x - dx
+                guard currentX >= 0, currentX < current.width, x < previous.width else { continue }
+                let prevValue = Int(previous.luma[y * previous.width + x])
+                let currentValue = Int(current.luma[currentY * current.width + currentX])
+                total += abs(prevValue - currentValue)
+                count += 1
+            }
+        }
+        guard count > 0 else { return .greatestFiniteMagnitude }
+        return CGFloat(total) / CGFloat(count)
+    }
+
+    private static func triangularMovingAverage(_ points: [CGPoint], radius: Int) -> [CGPoint] {
+        guard !points.isEmpty, radius > 0 else { return points }
+        return points.indices.map { index in
+            let lower = max(0, index - radius)
+            let upper = min(points.count - 1, index + radius)
+            var totalWeight: CGFloat = 0
+            var sum = CGPoint.zero
+            for sampleIndex in lower...upper {
+                let weight = CGFloat(radius + 1 - abs(sampleIndex - index))
+                totalWeight += weight
+                sum.x += points[sampleIndex].x * weight
+                sum.y += points[sampleIndex].y * weight
+            }
+            return CGPoint(x: sum.x / max(totalWeight, 0.0001),
+                           y: sum.y / max(totalWeight, 0.0001))
+        }
+    }
+
+    private static func limited(_ point: CGPoint, maxX: CGFloat, maxY: CGFloat) -> CGPoint {
+        CGPoint(x: min(max(point.x, -maxX), maxX),
+                y: min(max(point.y, -maxY), maxY))
     }
 
     private static func fallbackStillImage(asset: AVURLAsset, seconds: Double) throws -> CGImage {
@@ -806,6 +1288,7 @@ enum LivePhotoGenerator {
                                    assetID: String,
                                    meta: SourceMeta,
                                    colorGrade: ColorGrade,
+                                   stabilizationPlan: StabilizationPlan,
                                    to url: URL) throws {
 
         try loadAssetKeys(asset, keys: ["tracks", "duration"])
@@ -870,25 +1353,29 @@ enum LivePhotoGenerator {
         // setting the rotated (display) size here would stretch portrait video.
         let natural = vTrack.naturalSize
         let w = abs(natural.width), h = abs(natural.height)
-        let vIn = AVAssetWriterInput(mediaType: .video, outputSettings: [
+        let colorProfile = outputVideoColorProfile(for: vTrack)
+        let videoOutputSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: Int(w),
             AVVideoHeightKey: Int(h),
+            AVVideoColorPropertiesKey: colorProfile.colorProperties,
+            AVVideoAllowWideColorKey: colorProfile.allowsWideColor,
             AVVideoCompressionPropertiesKey: [
                 AVVideoAverageBitRateKey: Int(w * h * 8)
             ]
-        ])
+        ]
+        let vIn = AVAssetWriterInput(mediaType: .video, outputSettings: videoOutputSettings)
         vIn.expectsMediaDataInRealTime = false
         vIn.transform = vTrack.preferredTransform
         guard writer.canAdd(vIn) else { throw GenError.writerInit("video input") }
         writer.add(vIn)
 
-        let shouldApplyColorGrade = !colorGrade.isNeutral
-        let colorPipeline = shouldApplyColorGrade ? colorGrade.makePipeline() : nil
+        let shouldRenderVideoFrames = !colorGrade.isNeutral || stabilizationPlan.isActive
+        let colorPipeline = !colorGrade.isNeutral ? colorGrade.makePipeline() : nil
         let pixelAdaptor: AVAssetWriterInputPixelBufferAdaptor?
         let ciContext: CIContext?
         let renderColorSpace: CGColorSpace?
-        if shouldApplyColorGrade {
+        if shouldRenderVideoFrames {
             pixelAdaptor = AVAssetWriterInputPixelBufferAdaptor(
                 assetWriterInput: vIn,
                 sourcePixelBufferAttributes: [
@@ -898,8 +1385,11 @@ enum LivePhotoGenerator {
                     kCVPixelBufferIOSurfacePropertiesKey as String: [:]
                 ]
             )
-            ciContext = CIContext()
-            renderColorSpace = CGColorSpaceCreateDeviceRGB()
+            ciContext = CIContext(options: [
+                .workingColorSpace: colorProfile.renderColorSpace,
+                .outputColorSpace: colorProfile.renderColorSpace
+            ])
+            renderColorSpace = colorProfile.renderColorSpace
         } else {
             pixelAdaptor = nil
             ciContext = nil
@@ -963,7 +1453,7 @@ enum LivePhotoGenerator {
                     return
                 }
 
-                if shouldApplyColorGrade {
+                if shouldRenderVideoFrames {
                     guard let imageBuffer = CMSampleBufferGetImageBuffer(sample),
                           let pixelAdaptor,
                           let pixelBufferPool = pixelAdaptor.pixelBufferPool,
@@ -989,8 +1479,15 @@ enum LivePhotoGenerator {
                     }
 
                     let sourceImage = CIImage(cvPixelBuffer: imageBuffer)
-                    let outputImage = (colorPipeline?.apply(to: sourceImage) ?? sourceImage)
+                    var outputImage = (colorPipeline?.apply(to: sourceImage) ?? sourceImage)
                         .cropped(to: sourceImage.extent)
+                    if stabilizationPlan.isActive {
+                        let seconds = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample))
+                        outputImage = outputImage
+                            .transformed(by: stabilizationPlan.videoTransform(at: seconds,
+                                                                              extent: sourceImage.extent))
+                            .cropped(to: sourceImage.extent)
+                    }
                     ciContext.render(outputImage,
                                      to: outputBuffer,
                                      bounds: sourceImage.extent,

@@ -18,7 +18,8 @@ let package = Package(
                 .linkedFramework("CoreMedia"),
                 .linkedFramework("CoreImage"),
                 .linkedFramework("ImageIO"),
-                .linkedFramework("AppKit")
+                .linkedFramework("AppKit"),
+                .linkedFramework("Vision")
             ]
         )
     ]

@@ -24,6 +24,7 @@ struct ContentView: View {
     @State private var colorPreset = ColorGrade.Preset.original
     @State private var isColorExpanded = false
     @State private var colorSection: ColorSection = .basics
+    @State private var stabilization = VideoStabilization.off
     @AppStorage("liveconverter.outputDir") private var outputDirPath = ""
     @AppStorage(L.prefKey) private var langPref = "auto"
 
@@ -566,8 +567,51 @@ struct ContentView: View {
     private var colorSidePanel: some View {
         VStack(spacing: 12) {
             durationSlider
+            stabilizationPanel
             colorGradePanel
         }
+    }
+
+    private var stabilizationPanel: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 10) {
+                Label(L.t("Stabilization", "防抖"), systemImage: "dot.scope")
+                    .font(.callout.weight(.semibold))
+                Spacer()
+                Toggle(isOn: $stabilization.isEnabled) {
+                    Text(stabilization.isEnabled ? L.t("On", "开启") : L.t("Off", "关闭"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .toggleStyle(.switch)
+                .fixedSize()
+            }
+
+            if stabilization.isEnabled {
+                HStack(spacing: 10) {
+                    Image(systemName: "crop")
+                        .frame(width: 18)
+                        .foregroundStyle(.secondary)
+                    Text(L.t("Strength", "强度"))
+                        .font(.caption)
+                        .frame(width: 48, alignment: .leading)
+                    Picker(selection: $stabilization.strength) {
+                        ForEach(VideoStabilization.Strength.allCases) { strength in
+                            Text(strength.title).tag(strength)
+                        }
+                    } label: {
+                        EmptyView()
+                    }
+                    .pickerStyle(.segmented)
+                }
+            }
+        }
+        .padding(10)
+        .background(Color.gray.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .animation(.easeInOut(duration: 0.12), value: stabilization.isEnabled)
+        .help(L.t("Smooths shaky clips during export. It slightly crops the edges and takes longer.",
+                  "导出时平滑抖动画面。会轻微裁切边缘，并增加导出时间。"))
     }
 
     private var colorGradePanel: some View {
@@ -929,6 +973,10 @@ struct ContentView: View {
         guard let asset = model.asset else { return }
         isGenerating = true
         model.status = L.t("Creating Live Photo (.pvt)…", "正在生成 Live Photo（.pvt）…")
+        if stabilization.isActive {
+            model.status = L.t("Analyzing shake and creating Live Photo (.pvt)…",
+                               "正在分析抖动并生成 Live Photo（.pvt）…")
+        }
 
         let dir = outputDir
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -939,6 +987,7 @@ struct ContentView: View {
             durationSeconds: model.windowDuration,
             coverSeconds: model.coverTime,
             colorGrade: colorGrade,
+            stabilization: stabilization,
             outputDirectory: dir,
             format: .pvt
         ) { result in
@@ -963,6 +1012,10 @@ struct ContentView: View {
         isGenerating = true
         collageModel.status = L.t("Creating three-up Live Photo (.pvt)…",
                                   "正在生成三拼 Live Photo（.pvt）…")
+        if stabilization.isActive {
+            collageModel.status = L.t("Analyzing shake and creating three-up Live Photo (.pvt)…",
+                                      "正在分析抖动并生成三拼 Live Photo（.pvt）…")
+        }
 
         let dir = outputDir
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -976,6 +1029,7 @@ struct ContentView: View {
             coverSeconds: keyPhotoSeconds,
             audioEnabled: collageModel.audioEnabled,
             colorGrade: colorGrade,
+            stabilization: stabilization,
             outputDirectory: dir,
             format: .pvt
         ) { result in
