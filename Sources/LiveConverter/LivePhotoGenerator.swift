@@ -57,7 +57,6 @@ enum LivePhotoGenerator {
     private struct VideoColorProfile {
         let colorProperties: [String: String]
         let renderColorSpace: CGColorSpace
-        let allowsWideColor: Bool
 
         static let rec709 = VideoColorProfile(
             colorProperties: [
@@ -65,8 +64,7 @@ enum LivePhotoGenerator {
                 AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
                 AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2
             ],
-            renderColorSpace: CGColorSpace(name: CGColorSpace.itur_709) ?? CGColorSpaceCreateDeviceRGB(),
-            allowsWideColor: false
+            renderColorSpace: CGColorSpace(name: CGColorSpace.itur_709) ?? CGColorSpaceCreateDeviceRGB()
         )
 
         static let displayP3 = VideoColorProfile(
@@ -75,8 +73,7 @@ enum LivePhotoGenerator {
                 AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
                 AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2
             ],
-            renderColorSpace: CGColorSpace(name: CGColorSpace.displayP3) ?? CGColorSpaceCreateDeviceRGB(),
-            allowsWideColor: true
+            renderColorSpace: CGColorSpace(name: CGColorSpace.displayP3) ?? CGColorSpaceCreateDeviceRGB()
         )
     }
 
@@ -1359,7 +1356,6 @@ enum LivePhotoGenerator {
             AVVideoWidthKey: Int(w),
             AVVideoHeightKey: Int(h),
             AVVideoColorPropertiesKey: colorProfile.colorProperties,
-            AVVideoAllowWideColorKey: colorProfile.allowsWideColor,
             AVVideoCompressionPropertiesKey: [
                 AVVideoAverageBitRateKey: Int(w * h * 8)
             ]
